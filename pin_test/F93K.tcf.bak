@@ -1,32 +1,14 @@
-<TCF name = "F93K" comment = "1" author = "xy:wangjian" date = "2018/04/17">
+<TCF name = "F93K" comment = "1" author = "xy" date = "2018/04/08">
 	<FRAME name = "EF0101">
-		<CONNECT assembly = "AS0101" pogo = "106" cage = "1" slot = "1" card = "BR0101" plug = "D01"/>
-		<CONNECT assembly = "AS0101" pogo = "109" cage = "1" slot = "1" card = "BR0101" plug = "D02"/>
-		<CONNECT assembly = "AS0101" pogo = "111" cage = "1" slot = "1" card = "BR0101" plug = "D03"/>
-		<CONNECT assembly = "AS0101" pogo = "112" cage = "1" slot = "1" card = "BR0101" plug = "D04"/>
-		<CONNECT assembly = "AS0101" pogo = "117" cage = "1" slot = "1" card = "BR0101" plug = "D05"/>
-		<CONNECT assembly = "AS0101" pogo = "120" cage = "1" slot = "1" card = "BR0101" plug = "D06"/>
-		<CONNECT assembly = "AS0101" pogo = "121" cage = "1" slot = "1" card = "BR0101" plug = "D07"/>
-		<CONNECT assembly = "AS0101" pogo = "123" cage = "1" slot = "1" card = "BR0101" plug = "D08"/>
+		<CONNECT pogo = "106" cage = "1" slot = "1" card = "BR0101" plug = "D01"/>
+		<CONNECT pogo = "109" cage = "1" slot = "1" card = "BR0101" plug = "D02"/>
+		<CONNECT pogo = "111" cage = "1" slot = "1" card = "BR0101" plug = "D03"/>
+		<CONNECT pogo = "112" cage = "1" slot = "1" card = "BR0101" plug = "D04"/>
+		<CONNECT pogo = "117" cage = "1" slot = "1" card = "BR0101" plug = "D05"/>
+		<CONNECT pogo = "120" cage = "1" slot = "1" card = "BR0101" plug = "D06"/>
+		<CONNECT pogo = "121" cage = "1" slot = "1" card = "BR0101" plug = "D07"/>
+		<CONNECT pogo = "123" cage = "1" slot = "1" card = "BR0101" plug = "D08"/>
 	</FRAME>
-	<ASSEMBLY name = "AS0101" capacity = "16">
-		<WIRE pogopin = "01" plugpin = "01"/>
-		<WIRE pogopin = "03" plugpin = "02"/>
-		<WIRE pogopin = "02" plugpin = "03"/>
-		<WIRE pogopin = "04" plugpin = "04"/>
-		<WIRE pogopin = "05" plugpin = "05"/>
-		<WIRE pogopin = "07" plugpin = "06"/>
-		<WIRE pogopin = "06" plugpin = "07"/>
-		<WIRE pogopin = "08" plugpin = "08"/>
-		<WIRE pogopin = "09" plugpin = "09"/>
-		<WIRE pogopin = "11" plugpin = "10"/>
-		<WIRE pogopin = "10" plugpin = "11"/>
-		<WIRE pogopin = "12" plugpin = "12"/>
-		<WIRE pogopin = "13" plugpin = "13"/>
-		<WIRE pogopin = "15" plugpin = "14"/>
-		<WIRE pogopin = "14" plugpin = "15"/>
-		<WIRE pogopin = "16" plugpin = "16"/>
-	</ASSEMBLY>
 	<CARD name = "BR0101" width = "128">
 		<SIGMAP>
 			<MAPPING channel = "D0101" byte = "1" bit = "7"/>
