@@ -9,7 +9,7 @@
 		<CONNECT assembly = "AS0101" pogo = "121" cage = "1" slot = "1" card = "BR0101" plug = "D07"/>
 		<CONNECT assembly = "AS0101" pogo = "123" cage = "1" slot = "1" card = "BR0101" plug = "D08"/>
 	</FRAME>
-	<ASSEMBLY name = "AS0101" capacity = "16">
+	<ASSEMBLY code = "AS0101" capacity = "16">
 		<WIRE pogopin = "01" plugpin = "01"/>
 		<WIRE pogopin = "03" plugpin = "02"/>
 		<WIRE pogopin = "02" plugpin = "03"/>
@@ -27,7 +27,7 @@
 		<WIRE pogopin = "14" plugpin = "15"/>
 		<WIRE pogopin = "16" plugpin = "16"/>
 	</ASSEMBLY>
-	<CARD name = "BR0101" width = "128">
+	<CARD code = "BR0101" width = "128">
 		<SIGMAP>
 			<MAPPING channel = "D0101" byte = "1" bit = "7"/>
 			<MAPPING channel = "D0102" byte = "1" bit = "6"/>
