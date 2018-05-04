@@ -34,9 +34,20 @@ def get_soup(file):
 	return soup
 
 
+def file_check(file_dict):
+	"""
+	Check file integrity.
+	:return:
+	"""
+	pass
+
+
+"""Write operation, mask, or testbench"""
+
+
 def write_testbench(fw, pos_dict):
 	if not pos_dict:
-		print("Nothing")
+		# print("Nothing")
 		return
 	numbers = [0] * 16
 	for key, value in pos_dict.items():
@@ -241,6 +252,7 @@ def tfo_parser(file):
 	"""
 	TODO: Multiple TEST tag, different attr 'name' and 'path'.
 	TODO: Return file_dict like {test1:{path:'path', file1:'file1', ...}, test2:{...}, ...}.
+	Format: {"lbf":"LB010tf1", dut:"LX200", "test":{"pin_test":{"path":".", }}}
 	:param file:
 	:return file_dict:
 	"""
