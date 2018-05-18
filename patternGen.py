@@ -8,7 +8,6 @@ DIRECTORY = sys.path[0]
 # TB_RELPATH = os.path.join(sys.path[0], "pin_test")
 TB_RELPATH = "pin_test"
 BS_RELPATH = "pin_test_bitstream"
-signal = {}
 
 # define operation code here
 MASK_OP = 0x1
@@ -19,6 +18,7 @@ BITSTREAM_OP = None
 # define other global constants
 BIN_WIDTH = 128
 BIN_BYTE_WIDTH = BIN_WIDTH / 8
+BITSTREAM_WIDTH = 32
 # enddefine
 
 """Tools"""
@@ -74,6 +74,10 @@ def write_testbench(fw, pos_dict):
 	# print("write success")
 
 
+def write_bitstream(fw, pos_dict, sig_dict, tick):
+	pass
+
+
 def write_operator(fw, operator, length):
 	fw.write(struct.pack('B', operator))  # 1 byte
 	for i in range(11):                   # length takes 4 bytes
@@ -111,6 +115,82 @@ def write_mask(fw, sig_dict, pio_dict, tb_counter):
 """File Parsers"""
 
 
+class General(object):
+	relpath = '.'
+	pin2pos = {}
+	file_list = []  # define file postion on the server (user doesn't have to upload)
+
+	def __init__(self, relpath):
+		self.relpath = relpath
+
+	def pio_parser(self, file):
+		pio_dict = {}
+		entri_dict = {}
+		path = os.path.join(DIRECTORY, self.relpath, file)
+		regex = re.compile(r'NET\s+"(.+)"\s+DIR\s*=\s*(input|output|inout)(.*);', re.I)
+		regex2 = re.compile(r'.*"(.*)"\s*')
+		with open(path, "r") as f:
+			for line in f.readlines():
+				m = regex.match(line)
+				if m:
+					# print(m.groups())
+					io = m.group(2).lower()
+					pio_dict[m.group(1)] = io
+					if io == 'inout':
+						tri = regex2.match(m.group(3)).group(1)
+						# print(1, tri)
+						entri_dict[tri] = m.group(1)
+		# print(pio_dict, entri_dict)
+		return pio_dict, entri_dict
+
+	def ucf_parser(self, file):
+		sig2pin = {}
+		path = os.path.join(DIRECTORY, self.relpath, file)
+		regex = re.compile('NET "(.+)" LOC = (.+);', re.I)
+		with open(path, "r") as f:
+			for line in f.readlines():
+				m = regex.match(line)
+				if m:
+					sig2pin[m.group(1)] = m.group(2)
+		return sig2pin
+
+	def lbf_parser(self, file):
+		"""
+		Difference from the outside version:
+		return pin2channel instead of sig2channel.
+		:param file:
+		:return:
+		"""
+		soup = get_soup(self.relpath, file)
+		name_check(file, soup.LBF['name'])
+
+		pin2chl = {}
+		# dut_tag = soup.find('DUT').children
+		for tag in soup.find_all('channel'):
+			pin2chl[tag['pin']] = tag['channel']
+		return pin2chl
+
+	def tcf_parser(self, file, pin2chl):
+		soup = get_soup(relpath, file)
+		name_check(file, soup.TCF['name'])
+		for key, value in pin2chl.items():
+			# FRAME & ASSEMBLY tag
+			connect_tag = soup.find(pogo=value[:3])
+			assembly_name = connect_tag['assembly']  # should search by 'AS0101',
+			wire_tag = soup.find(code=assembly_name).find(pogopin=value[3:])  # not this
+			# print(wire_tag)
+			channel = connect_tag['plug'] + wire_tag['plugpin']
+
+			# SIGMAP tag
+			mapping_tag = soup.find(channel=channel)
+			byte = int(mapping_tag['byte'])
+			bit = int(mapping_tag['bit'])
+			self.pin2pos[key] = (byte, bit)
+
+
+# TODO: handle .tfo file, get file list.
+
+
 def tcf_parser(relpath, file, sig2pin):
 	soup = get_soup(relpath, file)
 	name_check(file, soup.TCF['name'])
@@ -129,21 +209,6 @@ def tcf_parser(relpath, file, sig2pin):
 		bit = int(mapping_tag['bit'])
 		sig2pin[key] = (byte, bit)
 
-
-"""
-def tcf_parser(file, sig2pin):
-	soup = get_soup(file)
-	name_check(file, soup.TCF['name'])
-	# FRAME tag
-	for key, value in sig2pin.items():
-		# FRAME tag
-		channel = soup.find(pogo=value[:3])['plug'] + value[3:]
-		# SIGMAP tag
-		mapping_tag = soup.find(channel=channel)
-		byte = int(mapping_tag['byte'])
-		bit = int(mapping_tag['bit'])
-		sig2pin[key] = (byte, bit)
-"""
 
 def itm_parser(relpath, file):
 	soup = get_soup(relpath, file)
@@ -309,63 +374,94 @@ def get_sig_value(value=0, default=0, flag='const', tick=0):
 					return v
 
 
-def atf_parser(relpath, file):
-	soup = get_soup(relpath, file)
-	name_check(file, soup.ATF['name'])
-	# print(soup)
+class BitstreamGen(General):
+	atf_file = ''
+	sig2val = {}    # {signal_name: {value, default, flag}, ...}
+	btc2data = {}
 
-	file_dict = {}
-	dwm_tag = soup.ATF.LIST.DWM
-	file_dict['relpath'] = dwm_tag['path']
-	print(dwm_tag)
-	for child in dwm_tag.children:
-		print(child)
-		if type(child) == bs4.element.Tag:
-			file_dict[child.name] = child['name'] + '.' + child.name.lower()
-	return file_dict
+	def __init__(self, relpath, atf_file):
+		General.__init__(self, relpath)
+		self.file_dict = self.atf_parser(atf_file)
+		# TODO: get position dictionary
+		self.pio_dict, whatever = General.pio_parser(self, self.file_dict['SPIO'])
+		signal = General.ucf_parser(self, self.file_dict['SUCF'])
+		lbf_parser(self.relpath, "LB0101.lbf.bak", signal)  # path of .lbf file???
 
+	def atf_parser(self, file):
+		soup = get_soup(self.relpath, file)
+		name_check(file, soup.ATF['name'])
+		# print(soup)
 
-def sbc_parser(relpath, file):
-	soup = get_soup(relpath, file)
-	name_check(file, soup.SBC['name'])
+		file_dict = {}
+		dwm_tag = soup.ATF.LIST.DWM
+		file_dict['relpath'] = dwm_tag['path']
+		for child in dwm_tag.children:
+			if type(child) == bs4.element.Tag:
+				file_dict[child.name] = child['name'] + '.' + child.name.lower()
+		return file_dict
 
-	# Handle SIG tag
-	SIG_dict = {}  # {name:{value, default, flag}, ...}
-	for element in soup.find_all('SIG'):
-		# print(element)
-		ele_value = element['value']
-		regex1 = re.compile(r'(const)([0|1])')  # flag = const
-		m1 = regex1.search(ele_value)  # const has the highest priority
-		if m1:
-			flag, value = m1.groups()
-		else:
-			regex2 = re.compile(r'^(square)(\d+)T$')  # flag = square
-			m2 = regex2.match(ele_value)
-			if m2:
-				flag, value = m2.groups()
-				value = int(value)
+	def sbc_parser(self):
+		file = self.file_dict['SBC']
+		soup = get_soup(self.relpath, file)
+		name_check(file, soup.SBC['name'])
+
+		# Handle SIG tag
+		for element in soup.find_all('SIG'):
+			# print(element)
+			ele_value = element['value']
+			regex1 = re.compile(r'(const)([0|1])')  # flag = const
+			m1 = regex1.search(ele_value)  # const has the highest priority
+			if m1:
+				flag, value = m1.groups()
 			else:
-				regex3 = re.compile(r'(\d+)T([0|1])')  # flag = T
-				m3 = regex3.findall(ele_value)
-				if m3:
-					value = [map(int, x) for x in m3]
-					flag = 'T'
-				else:  # collect default
-					flag = ''
-					value = 0
-		default = int(element['default'])
-		SIG_dict[element['name']] = {'value': value, 'flag': flag, 'default': default}
+				regex2 = re.compile(r'^(square)(\d+)T$')  # flag = square
+				m2 = regex2.match(ele_value)
+				if m2:
+					flag, value = m2.groups()
+					value = int(value)
+				else:
+					regex3 = re.compile(r'(\d+)T([0|1])')  # flag = T
+					m3 = regex3.findall(ele_value)
+					if m3:
+						value = [map(int, x) for x in m3]
+						flag = 'T'
+					else:  # collect default
+						flag = ''
+						value = 0
+			default = int(element['default'])
+			self.sig2val[element['name']] = {'value': value, 'flag': flag, 'default': default}
 
-	# Handle BTC tag
-	BTC_dict = {}
-	btc_tag = soup.find('BTC')
-	# print(btc_tag)
-	BTC_dict['start'] = int(btc_tag['start'][:-1])
-	for child in btc_tag.find_all('DATA'):
-		# print(children)
-		num = (int(child['byte']) - 1) * 8 + 7 - int(child['bit'])
-		BTC_dict[num] = child['name']
-	return SIG_dict, BTC_dict
+		# Handle BTC tag
+		btc_tag = soup.find('BTC')
+		# print(btc_tag)
+		self.btc2data['start'] = int(btc_tag['start'][:-1])
+		for child in btc_tag.find_all('DATA'):
+			# print(children)
+			num = (int(child['byte']) - 1) * 8 + 7 - int(child['bit'])
+			self.btc2data[num] = child['name']
+
+	def rbt_generator(self):
+		"""
+		Generator, yield the position of bitstream.
+		:return:
+		"""
+		file = self.file_dict['RBT']
+		path = os.path.join(DIRECTORY, self.relpath, file)
+		write_path = os.path.join(DIRECTORY, os.path.splitext(file)[0] + ".bin")
+
+		with open(path, 'r') as f, open(write_path, 'wb+') as fw:
+			for i in range(7):  # skip the first 7 lines
+				f.readline()
+			while f.readline():
+				pos_dict = {}
+				line = f.readline()
+				for i in range(BITSTREAM_WIDTH):
+					pos_dict[pin_dict[btc2data[i]]] = line[i]
+				print(pos_dict)
+				yield pos_dict
+
+	def write(self):
+		pass
 
 
 """Main process and test"""
@@ -377,7 +473,7 @@ def testbenchGen():
 	print("entri_dict = " + str(entri_dict))
 	signal = ucf_parser(TB_RELPATH, "pin_test.ucf")
 	print(signal)
-	lbf_parser(TB_RELPATH, "LB0101.lbf", signal)
+	lbf_parser(TB_RELPATH, "LB0101.lbf.bak", signal)
 	print(signal)
 	tcf_parser(TB_RELPATH, "F93K.tcf", signal)
 	print("sig_dict = " + str(signal))
@@ -390,19 +486,13 @@ def bitstreamGen():
 	print("pio_dict = " + str(pio_dict))
 	signal = ucf_parser(BS_RELPATH, "LX200.sucf")
 	print(signal)
-	lbf_parser("LB0101.lbf", signal)
+	lbf_parser("LB0101.lbf.bak", signal)
 	print(signal)
 
 
 def main():
-	period = itm_parser("pin_test.itm")
-	signal = ucf_parser("pin_test.ucf")
-	lbf_parser("LB0101.lbf", signal)
-	tcf_parser("F93K.tcf", signal)
-	print(signal)
-	pio_dict = pio_parser("pin_test.pio")
-	write_mask(pio_dict)
-	vcd_parser("pin_test.vcd", signal)
+	pass
+
 
 @timer
 def test():
@@ -413,11 +503,14 @@ def test():
 	print(sfile_dict)
 	file_dict = tfo_parser(TB_RELPATH, 'tfo_demo.tfo')
 	print(file_dict)
-	# with open("pin_test_bitstream/pin_test.rbt", 'r') as f:
-	# 	while f.readline():
-	# 		print(f.readline())
-	# end = time.time()
+	pio_dict, entri_dict = pio_parser(BS_RELPATH, "LX200.spio")
+	print("pio_dict = " + str(pio_dict))
+	signal = ucf_parser(BS_RELPATH, "LX200.sucf")
+	print(signal)
 
+
+# bitstream = BitstreamGen(relpath=BS_RELPATH, atf_file='pin_test.atf')
+# while input("\nPress q to exit:") == 'q':
+# 	bitstream.rbt_generator()
 
 test()
-# print(timeit.Timer("test()", "from __main__ import test").timeit(10))

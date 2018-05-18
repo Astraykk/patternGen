@@ -8,24 +8,23 @@ DIRECTORY = sys.path[0]   # /path/to/mysite/
 PROJECT_PATH = ''         # /mysite/uploads/project/
 INCLUDE_PATH = 'include'  # /mysite/tools/include/
 
-
 # define operation code here
 MASK_OP = 0x1
+BITSTREAM_OP = 0x2
 TESTBENCH_OP = 0x4
-BITSTREAM_OP = 0x8
 # enddefine
 
 # define other global constants
 BIN_WIDTH = 128
-BIN_BYTE_WIDTH = BIN_WIDTH / 8
+BIN_BYTE_WIDTH = int(BIN_WIDTH / 8)
 BITSTREAM_WIDTH = 32
 # end define
 
 """Tools"""
 
 
-# decorator without parameter
 def timer(func):
+	# decorator without parameter
 	def _timer():
 		start_time = time.time()
 		func()
@@ -94,23 +93,6 @@ def write_length(fw, length):
 		fw.seek(0, 2)         # return to end of file
 
 
-# def write_mask(fw, sig_dict, pio_dict, tb_counter):
-# 	"""
-# 	Run at the beginning of the process, and anytime en_tri changes.
-# 	Write mask (pin input/output/inout status) to file.
-# 	If there is any testbench written before, write op code for it.
-# 	(Abandon) entri_dict: a dict contain the en_tri pin status, {en_tri1:0, en_tri2:1, ...}
-# 	:return:
-# 	"""
-# 	numbers = [0xff] * 16
-# 	write_tb_op(fw, tb_counter)
-# 	write_operator(fw, MASK_OP, 1)
-# 	for key, value in sig_dict.items():
-# 		if pio_dict.setdefault(key, None) == 'input':  # TODO: maybe value in pio_dict should be 0/1?
-# 			numbers[value[0]-1] -= 2 ** value[1]
-# 	for num in numbers:
-# 		fw.write(struct.pack('B', num))
-# 	write_operator(fw, TESTBENCH_OP, 0)
 def write_mask(fw, sig2pos, sig2pio):  # static
 	numbers = [0xff] * 16
 	write_operator(fw, MASK_OP, 1)
@@ -211,7 +193,8 @@ class PatternGen(object):
 				else:
 					self.file_list[child.name] = child['name'] + '.' + child.name.lower()
 
-	def pio_parser(self, path, file):
+	@staticmethod
+	def pio_parser(path, file):
 		pio_dict = {}
 		entri_dict = {}
 		path = os.path.join(path, file)
@@ -231,7 +214,8 @@ class PatternGen(object):
 		# print(pio_dict, entri_dict)
 		return pio_dict, entri_dict
 
-	def ucf_parser(self, path, file):
+	@staticmethod
+	def ucf_parser(path, file):
 		sig2pin = {}
 		path = os.path.join(path, file)
 		regex = re.compile(r'NET\s+"(.+)"\s+LOC =(.+);', re.I)
@@ -363,7 +347,7 @@ class PatternGen(object):
 					regex3 = re.compile(r'(\d+)T([0|1])')  # flag = T
 					m3 = regex3.findall(ele_value)
 					if m3:
-						value = [map(int, x) for x in m3]
+						value = [list(map(int, x)) for x in m3]
 						flag = 'T'
 					else:  # collect default
 						flag = ''
@@ -381,7 +365,7 @@ class PatternGen(object):
 		# Handle NOP tag
 		nop_tag = soup.find('NOP')
 		self.nop['start'] = nop_tag['start']
-		self.nop['cycle'] = nop_tag['cycle']
+		self.nop['cycle'] = int(nop_tag['cycle'][:-1])
 
 	def rbt_generator(self, file):
 		"""
@@ -392,13 +376,11 @@ class PatternGen(object):
 		with open(path, 'r') as f:
 			for i in range(7):  # skip the first 7 lines
 				f.readline()
-			while f.readline():
+			while True:
 				line = f.readline()
+				if not line:
+					break
 				yield line
-				# for i in range(BITSTREAM_WIDTH):
-				# 	pos_dict[pin_dict[btc2data[i]]] = line[i]
-				# print(pos_dict)
-				# yield pos_dict
 
 	def write_command(self, fw):
 		pos2val = {}
@@ -407,10 +389,41 @@ class PatternGen(object):
 			pos2val[self.cmd2pos[key]] = value
 		write_content(fw, pos2val)
 
-	def write_bitstream(self):
-		gen = self.rbt_generator(self.file_list['BIT'] + '.rbt')
-		for i, line in enumerate(g):
+	def write_bitstream(self, fw):
+		pos2val = {}
+		gen = self.rbt_generator('pin_test.rbt.bak')
+		# gen = self.rbt_generator(self.file_list['BIT'] + '.rbt')
+		for line in gen:
+			# print(self.tick, line)
+			for key, flag in self.cmd2flag.items():
+				value = get_sig_value(flag, self.tick)
+				pos2val[self.cmd2pos[key]] = value
+			for i, value in enumerate(line.strip('\n')):
+				# if i >= 32:  # TODO: UGLY CODE!!!
+				# 	break
+				# print(i, value)
+				sig = self.pos2data[i]
+				pos = self.cmd2pos[sig]
+				pos2val[pos] = value
+			write_content(fw, pos2val)
 			self.tick += 1
+
+	def write_nop(self, fw):
+		start = self.nop['start']
+		cycle = self.nop['cycle']
+		# print(start, cycle)
+		fw.seek(-BIN_BYTE_WIDTH, 1)
+		line = fw.read()
+		fw.seek(0, 2)
+		if start == 'AFB':
+			for i in range(cycle):
+				fw.write(line)
+				self.tick += 1
+		else:
+			start = int(start)
+			while self.tick <= start:
+				fw.write(line)
+				self.tick += 1
 
 	def write(self):
 		path = os.path.join(self.path, self.file_list['BIN'])
@@ -418,17 +431,12 @@ class PatternGen(object):
 			write_mask(fw, self.cmd2pos, self.cmd2spio)
 			write_operator(fw, BITSTREAM_OP, 0)
 			while self.tick < self.bs_start:
-				print(self.tick)
+				# print(self.tick)
 				self.write_command(fw)
 				self.tick += 1
 
-			# self.write_bitstream(fw)
-			while True:
-				nop = self.nop['start']
-				if nop == 'AFB' or int(nop) <= self.tick:
-					break
-				self.write_command(fw)
-				self.tick += 1
+			self.write_bitstream(fw)
+			self.write_nop(fw)
 
 			self.vcd_parser(fw)
 
@@ -448,20 +456,13 @@ def test():
 	# print('bs_start = ' + str(pattern.bs_start))
 	# print('pos2data = ' + str(pattern.pos2data))
 	# print('nop = ' + str(pattern.nop))
-	#
 	# print('sig2pio = ' + str(pattern.sig2pio))
 	# print('entri_dict = ' + str(pattern.entri_dict))
 	# print('sig2pos = ' + str(pattern.sig2pos))
 
-	pattern.write()
-
-	# g = pattern.rbt_generator(pattern.file_list['BIT'] + '.rbt')
-	# for i, line in enumerate(g):
-	# 	print(i, line)
-	# 	if i == 5:
-	# 		break
-
-
+	print('\n'.join(['%s = %s' % item for item in pattern.__dict__.items()]))
+	print(pattern.__dir__())
+	# pattern.write()
 
 
 test()
