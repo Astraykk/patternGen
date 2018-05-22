@@ -12,6 +12,7 @@ INCLUDE_PATH = 'include'  # /mysite/tools/include/
 MASK_OP = 0x1
 BITSTREAM_OP = 0x2
 TESTBENCH_OP = 0x4
+END_OP = 0x80
 # enddefine
 
 # define other global constants
@@ -424,6 +425,7 @@ class PatternGen(object):
 			while self.tick <= start:
 				fw.write(line)
 				self.tick += 1
+		write_length(fw, self.tick)
 
 	def write(self):
 		path = os.path.join(self.path, self.file_list['BIN'])
@@ -439,6 +441,7 @@ class PatternGen(object):
 			self.write_nop(fw)
 
 			self.vcd_parser(fw)
+			write_operator(fw, END_OP, 0)
 
 
 """Main process and test"""
@@ -446,7 +449,9 @@ class PatternGen(object):
 
 @timer
 def test():
+	from patternGen import PatternGen
 	pattern = PatternGen(PROJECT_PATH, 'tfo_demo.tfo')
+	pattern.write()
 	# print('path = ' + pattern.path)
 	# print('include path = ' + pattern.include_path)
 	# print('file list = ' + str(pattern.file_list))
