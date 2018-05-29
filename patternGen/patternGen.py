@@ -470,4 +470,5 @@ def test():
 	# pattern.write()
 
 
-test()
+if __name__ == '__main__':
+	test()
