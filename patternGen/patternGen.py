@@ -2,9 +2,11 @@ import re, sys, os, struct
 import bs4
 from bs4 import BeautifulSoup
 import time
+# from filebrowser.sites import site
 # import timeit
 
 DIRECTORY = sys.path[0]   # /path/to/mysite/
+# DIRECTORY = os.path.join(site.storage.location, "uploads")   # /path/to/mysite/
 PROJECT_PATH = ''         # /mysite/uploads/project/
 INCLUDE_PATH = 'include'  # /mysite/tools/include/
 
@@ -44,6 +46,7 @@ def name_check(file, name):
 
 def get_soup(path, file):
 	path = os.path.join(path, file)
+	# print(path)
 	with open(path, "r") as f:
 		soup = BeautifulSoup(f.read(), "xml")
 	return soup
@@ -186,7 +189,7 @@ class PatternGen(object):
 		self.file_list['LBF'] = soup.TFO.LBF['type'] + '.lbf'
 		test_tag = soup.find('TEST')
 		self.file_list['BIN'] = test_tag['name'] + '.bin'
-		self.path = test_tag['path']
+		# self.path = test_tag['path']
 		for child in test_tag.children:
 			if type(child) == bs4.element.Tag:
 				if child.name == 'DWM' or child.name == 'BIT':
@@ -228,6 +231,7 @@ class PatternGen(object):
 		return sig2pin
 
 	def atf_parser(self, file):
+		# print(self.path)
 		soup = get_soup(self.path, file)
 		name_check(file, soup.ATF['name'])
 		dwm_tag = soup.ATF.LIST.DWM
@@ -400,8 +404,8 @@ class PatternGen(object):
 				value = get_sig_value(flag, self.tick)
 				pos2val[self.cmd2pos[key]] = value
 			for i, value in enumerate(line.strip('\n')):
-				# if i >= 32:  # TODO: UGLY CODE!!!
-				# 	break
+				if i >= 32:  # TODO: UGLY CODE!!!
+					break
 				# print(i, value)
 				sig = self.pos2data[i]
 				pos = self.cmd2pos[sig]
@@ -442,6 +446,7 @@ class PatternGen(object):
 
 			self.vcd_parser(fw)
 			write_operator(fw, END_OP, 0)
+			print("Finished!")
 
 
 """Main process and test"""
@@ -449,7 +454,7 @@ class PatternGen(object):
 
 @timer
 def test():
-	from patternGen import PatternGen
+	# from patternGen import PatternGen
 	pattern = PatternGen(PROJECT_PATH, 'tfo_demo.tfo')
 	pattern.write()
 	# print('path = ' + pattern.path)
@@ -470,5 +475,5 @@ def test():
 	# pattern.write()
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
 	test()
