@@ -146,6 +146,8 @@ class PatternGen(object):
 	# variable
 	tick = 0      # write clock
 	bs_start = 0  # start of bitstream
+	cclk_pos = (0, 0)
+	last_pos2val = {}
 
 	# signal dictionary
 	cmd2spio = {}
@@ -158,6 +160,7 @@ class PatternGen(object):
 	sig2pos = {}
 	entri_dict = {}
 
+
 	def __init__(self, path, tfo_file):
 		self.path = os.path.join(DIRECTORY, path)
 		self.tfo_parser(tfo_file)
@@ -169,6 +172,7 @@ class PatternGen(object):
 		cmd2channel = self.lbf_parser(self.file_list['LBF'], cmd2pin)
 		self.cmd2pos = self.tcf_parser(self.file_list['TCF'], cmd2channel)
 		self.sbc_parser(self.file_list['SBC'])
+		self.cclk_pos = self.cmd2pos['CCLK']
 
 		# initialize testbench info
 		self.sig2pio, self.entri_dict = self.pio_parser(self.path, self.file_list['PIO'])
@@ -387,12 +391,19 @@ class PatternGen(object):
 					break
 				yield line
 
+	def edge_check(self, fw):
+		if self.last_pos2val[self.cclk_pos] == 0:
+			self.last_pos2val[self.cclk_pos] = 1
+			write_content(fw, self.last_pos2val)
+			self.tick += 1
+
 	def write_command(self, fw):
 		pos2val = {}
 		for key, flag in self.cmd2flag.items():
 			value = get_sig_value(flag, self.tick)
 			pos2val[self.cmd2pos[key]] = value
 		write_content(fw, pos2val)
+		self.last_pos2val = pos2val
 
 	def write_bitstream(self, fw):
 		pos2val = {}
@@ -411,18 +422,32 @@ class PatternGen(object):
 				pos = self.cmd2pos[sig]
 				pos2val[pos] = value
 			write_content(fw, pos2val)
-			self.tick += 1
+			pos2val[self.cclk_pos] = 1
+			write_content(fw, pos2val)
+			self.tick += 2
+		self.last_pos2val = pos2val
+		# print(self.last_bs)
 
 	def write_nop(self, fw):
 		start = self.nop['start']
 		cycle = self.nop['cycle']
 		# print(start, cycle)
-		fw.seek(-BIN_BYTE_WIDTH, 1)
+		fw.seek(-BIN_BYTE_WIDTH, 1)  # Read last line.
 		line = fw.read()
 		fw.seek(0, 2)
+		cclk_pos = self.cmd2pos['CCLK']
+		# cclk_pos = 8 * (cclk_pos_tuple[0] - 1) + cclk_pos_tuple[1]
 		if start == 'AFB':
 			for i in range(cycle):
-				fw.write(line)
+				# if line[cclk_pos] == '1':
+				# 	cclk_line = line[:cclk_pos] + '0' + line[cclk_pos:]
+				# else:
+				# 	cclk_line = line[:cclk_pos] + '1' + line[cclk_pos:]
+				if self.last_pos2val[cclk_pos]:
+					self.last_pos2val[cclk_pos] = 0
+				else:
+					self.last_pos2val[cclk_pos] = 1
+				write_content(fw, self.last_pos2val)
 				self.tick += 1
 		else:
 			start = int(start)
@@ -441,6 +466,8 @@ class PatternGen(object):
 				self.write_command(fw)
 				self.tick += 1
 
+			# Check clock edge.
+			self.edge_check(fw)
 			self.write_bitstream(fw)
 			self.write_nop(fw)
 
@@ -471,7 +498,7 @@ def test():
 	# print('sig2pos = ' + str(pattern.sig2pos))
 
 	print('\n'.join(['%s = %s' % item for item in pattern.__dict__.items()]))
-	print(pattern.__dir__())
+	# print(pattern.__dir__())
 	# pattern.write()
 
 
