@@ -407,7 +407,7 @@ class PatternGen(object):
 
 	def write_bitstream(self, fw):
 		pos2val = {}
-		gen = self.rbt_generator('pin_test.rbt.bak')
+		gen = self.rbt_generator('pin_test_short.rbt')  # only for test
 		# gen = self.rbt_generator(self.file_list['BIT'] + '.rbt')
 		for line in gen:
 			# print(self.tick, line)
