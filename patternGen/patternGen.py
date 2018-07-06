@@ -160,7 +160,6 @@ class PatternGen(object):
 	sig2pos = {}
 	entri_dict = {}
 
-
 	def __init__(self, path, tfo_file):
 		self.path = os.path.join(DIRECTORY, path)
 		self.tfo_parser(tfo_file)
@@ -396,6 +395,9 @@ class PatternGen(object):
 			self.last_pos2val[self.cclk_pos] = 1
 			write_content(fw, self.last_pos2val)
 			self.tick += 1
+
+	def rpt2vcd(self, rpt, vcd):
+		pass
 
 	def write_command(self, fw):
 		pos2val = {}
