@@ -1,0 +1,40 @@
+## begin: lx200_clk0 ##
+inputs["clk_in"] = AB11
+inputs["in"] = B26
+outputs["out"] = L24
+## end ##
+## begin: lx200_clk1 ##
+inputs["clk_in"] = AB11
+inputs["in"] = B26
+outputs["out"] = L24
+## end ##
+## begin: lx200_clk2 ##
+inputs["clk_in"] = AB11
+inputs["in"] = B26
+outputs["out"] = L24
+## end ##
+## begin: lx200_clk3 ##
+inputs["clk_in"] = AB11
+inputs["in"] = B26
+outputs["out"] = L24
+## end ##
+## begin: lx200_clk4 ##
+inputs["clk_in"] = AB11
+inputs["in"] = B26
+outputs["out"] = L24
+## end ##
+## begin: lx200_clk5 ##
+inputs["clk_in"] = AB11
+inputs["in"] = B26
+outputs["out"] = L24
+## end ##
+## begin: lx200_clk6 ##
+inputs["clk_in"] = AB11
+inputs["in"] = B26
+outputs["out"] = L24
+## end ##
+## begin: lx200_clk7 ##
+inputs["clk_in"] = AB11
+inputs["in"] = B26
+outputs["out"] = L24
+## end ##
