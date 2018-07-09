@@ -1,0 +1,4 @@
+//lx200_clk0 test
+NET "clk_in"    DIR  =  input;
+NET "in"    DIR  =  input;
+NET "out"   DIR =   output;
