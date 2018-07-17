@@ -140,6 +140,7 @@ def get_sig_value(dictionary, tick=0):
 class PatternGen(object):
 	# path and file
 	path = '.'
+	command = []
 	include_path = os.path.join(DIRECTORY, INCLUDE_PATH)
 	file_list = {'TCF': 'F93K.tcf', 'ATF': 'pin_test.atf'}
 
@@ -160,10 +161,11 @@ class PatternGen(object):
 	sig2pos = {}
 	entri_dict = {}
 
-	def __init__(self, path, tfo_file):
+	def __init__(self, path, tfo_file, command='-normal'):
 		self.path = os.path.join(DIRECTORY, path)
-		self.tfo_parser(tfo_file)
-		self.atf_parser(self.file_list['ATF'])
+		self.command = command.split('-')           # Get command: -normal, -legacy, ...
+		self.tfo_parser(tfo_file)                   # Get position of user files.
+		self.atf_parser(self.file_list['ATF'])      # Get position of include files.
 
 		# initialize bitstream info
 		self.cmd2spio, whatever = self.pio_parser(self.include_path, self.file_list['SPIO'])
@@ -179,6 +181,9 @@ class PatternGen(object):
 		sig2channel = self.lbf_parser(self.file_list['LBF'], sig2pin)
 		self.sig2pos = self.tcf_parser(self.file_list['TCF'], sig2channel)
 
+		# ONLY FOR TEST
+		print('\n'.join(['%s = %s' % item for item in self.__dict__.items()]))
+
 	def tfo_parser(self, file):
 		"""
 		TODO: Multiple TEST tag, different attr 'name' and 'path'.
@@ -191,7 +196,7 @@ class PatternGen(object):
 		name_check(file, soup.TFO['name'])
 		self.file_list['LBF'] = soup.TFO.LBF['type'] + '.lbf'
 		test_tag = soup.find('TEST')
-		self.file_list['BIN'] = test_tag['name'] + '.bin'
+		self.file_list['PTN'] = test_tag['name'] + '.ptn'
 		# self.path = test_tag['path']
 		for child in test_tag.children:
 			if type(child) == bs4.element.Tag:
@@ -233,6 +238,10 @@ class PatternGen(object):
 					sig2pin[m.group(1)] = m.group(2).strip()
 		return sig2pin
 
+	@staticmethod
+	def txt_ucf_parser(path, file):
+		return ()
+
 	def atf_parser(self, file):
 		# print(self.path)
 		soup = get_soup(self.path, file)
@@ -273,6 +282,65 @@ class PatternGen(object):
 			sig2pos[key] = (byte, bit)
 		return sig2pos
 
+	def txt_parser(self, fw):
+		tb_counter = 0  # length of testbench in operation code
+		def_state = True  # definition state
+		x_val = 1  # default value of x
+		sym2sig = {}  # {symbolic_in_vcd: signal_name}
+		pos2val = {}  # {position(bit): signal(1|0|z|x)}
+		path = os.path.join(self.path, self.file_list['TXT'])
+		# write_path = os.path.join(self.path, self.file_list['PTN'])
+		regex1 = re.compile(r'(.)\s+(.*)\s+(input|output)', re.I)  # match signal name
+		regex2 = re.compile(r'^\*{10}$')  # match period partition
+		regex3 = re.compile(r'(.)\s+b([0|1|x|z])')  # match testbench
+
+		# if not os.path.exists(write_path):
+		# 	os.mkdir(write_path)
+		with open(path, "r") as f:
+			if not self.entri_dict:
+				write_mask(fw, self.sig2pos, self.sig2pio)
+				write_operator(fw, TESTBENCH_OP, 0)
+			line = f.readline()
+			while line:
+				# definition stage, return sym2sig = {symbol:signal, ...}
+				if def_state:
+					m1 = regex1.match(line)
+					if m1:
+						sym2sig[m1.group(1)] = m1.group(2)
+					else:
+						if regex2.match(line):
+							f.readline()  # skip the 2nd star row
+							def_state = False
+				else:
+					# match next tick; write last tick to file
+					m2 = regex2.match(line)
+					if m2 and regex2.match(f.readline()):  # skip 2nd star row # WARNING
+						write_content(fw, pos2val)  # Write testbench to binary file.
+						tb_counter += 1
+
+					# match testbench
+					m3 = regex3.match(line)
+					if m3:
+						value = m3.group(2)
+						if value == 'x':
+							value = x_val
+						key = m3.group(1)
+						pos2val[self.sig2pos.setdefault(sym2sig[key], None)] = value
+						if sym2sig[key] in self.entri_dict:
+							entri = sym2sig[key]
+							if pos2val[self.sig2pos[entri]] == '1':
+								self.sig2pio[self.entri_dict[entri]] = 'output'
+							else:
+								self.sig2pio[self.entri_dict[entri]] = 'input'
+							write_length(fw, tb_counter)
+							write_mask(fw, self.sig2pos, self.sig2pio)
+							write_operator(fw, TESTBENCH_OP, 0)
+							tb_counter = 0
+				line = f.readline()
+			write_content(fw, pos2val)
+			tb_counter += 1
+			write_length(fw, tb_counter)
+
 	def vcd_parser(self, fw):
 		tick = -1         # current tick
 		tb_counter = -1   # length of testbench in operation code
@@ -280,7 +348,7 @@ class PatternGen(object):
 		sym2sig = {}      # {symbolic_in_vcd: signal_name}
 		pos2val = {}      # {position(bit): signal(1|0|z|x)}
 		path = os.path.join(self.path, self.file_list['VCD'])
-		write_path = os.path.join(self.path, self.file_list['BIN'])
+		write_path = os.path.join(self.path, self.file_list['PTN'])
 		regex1 = re.compile(r'\$var .+ \d+ (.) (.+) \$end', re.I)  # match signal name
 		regex2 = re.compile(r'#(\d+)')                             # match period
 		regex3 = re.compile(r'([0|1|x|z])(.)')                     # match testbench
@@ -412,8 +480,8 @@ class PatternGen(object):
 
 	def write_bitstream(self, fw):
 		pos2val = {}
-		gen = self.rbt_generator('pin_test_short.rbt')  # only for test
-		# gen = self.rbt_generator(self.file_list['BIT'] + '.rbt')
+		# gen = self.rbt_generator('pin_test.rbt')  # only for test
+		gen = self.rbt_generator(self.file_list['BIT'] + '.rbt')
 		for line in gen:
 			# print(self.tick, line)
 			for key, flag in self.cmd2flag.items():
@@ -461,8 +529,14 @@ class PatternGen(object):
 				self.tick += 1
 		write_length(fw, self.tick)
 
+	def write_testbench(self, fw):
+		if 'normal' in self.command:
+			self.vcd_parser(fw)
+		elif 'legacy' in self.command:
+			self.txt_parser(fw)
+
 	def write(self):
-		path = os.path.join(self.path, self.file_list['BIN'])
+		path = os.path.join(self.path, self.file_list['PTN'])
 		with open(path, 'wb+') as fw:
 			write_mask(fw, self.cmd2pos, self.cmd2spio)
 			write_operator(fw, BITSTREAM_OP, 0)
@@ -475,8 +549,7 @@ class PatternGen(object):
 			self.edge_check(fw)
 			self.write_bitstream(fw)
 			self.write_nop(fw)
-
-			self.vcd_parser(fw)
+			self.write_testbench(fw)
 			write_operator(fw, END_OP, 0)
 			print("Finished!")
 
@@ -487,7 +560,8 @@ class PatternGen(object):
 @timer
 def test():
 	# from patternGen import PatternGen
-	pattern = PatternGen(PROJECT_PATH, 'tfo_demo.tfo')
+	# pattern = PatternGen('pin_test', 'tfo_demo.tfo')
+	pattern = PatternGen('CLK', 'tfo_demo.tfo', '-legacy')  # Test txt(vcd) format.
 	pattern.write()
 	# print('path = ' + pattern.path)
 	# print('include path = ' + pattern.include_path)
