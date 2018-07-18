@@ -449,7 +449,7 @@ class PatternGen(object):
 
 @timer
 def test():
-	from patternGen import PatternGen
+	from backup import PatternGen
 	pattern = PatternGen(PROJECT_PATH, 'tfo_demo.tfo')
 	pattern.write()
 	# print('path = ' + pattern.path)

@@ -1,0 +1,17 @@
+//test_tri
+NET "clk"    DIR  =  input;
+NET "wea"   DIR =   input; 
+
+NET "addra[0]" DIR  =  input;
+NET "addra[1]" DIR  =  input;
+NET "addra[3]" DIR  =  input;
+NET "addra[2]" DIR  =  input;
+
+NET "tri_inout[7]"  dir  =  inout  tri ="wea";
+NET "tri_inout[6]"  dir  =  inout  tri ="wea";
+NET "tri_inout[5]"  dir  =  inout  tri ="wea";
+NET "tri_inout[4]"  dir  =  inout  tri ="wea";
+NET "tri_inout[3]"  dir  =  inout  tri ="wea";
+NET "tri_inout[2]"  dir  =  inout  tri ="wea";
+NET "tri_inout[1]"  dir  =  inout  tri ="wea";
+NET "tri_inout[0]"  dir  =  inout  tri ="wea";

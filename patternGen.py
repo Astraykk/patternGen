@@ -182,7 +182,7 @@ class PatternGen(object):
 		self.sig2pos = self.tcf_parser(self.file_list['TCF'], sig2channel)
 
 		# ONLY FOR TEST
-		print('\n'.join(['%s = %s' % item for item in self.__dict__.items()]))
+		# print('\n'.join(['%s = %s' % item for item in self.__dict__.items()]))
 
 	def tfo_parser(self, file):
 		"""
@@ -283,30 +283,39 @@ class PatternGen(object):
 		return sig2pos
 
 	def txt_parser(self, fw):
-		tb_counter = 0  # length of testbench in operation code
-		def_state = True  # definition state
-		x_val = 1  # default value of x
-		sym2sig = {}  # {symbolic_in_vcd: signal_name}
-		pos2val = {}  # {position(bit): signal(1|0|z|x)}
+		print("enter func")
+		tb_counter = 0       # length of test bench in operation code
+		def_state = True     # definition state
+		x_val = 1            # default value of x
+		sym2sig = {}         # {symbolic_in_vcd: signal_name}
+		pos2val = {}         # {position(bit): signal(1|0|z|x)}
 		path = os.path.join(self.path, self.file_list['TXT'])
 		# write_path = os.path.join(self.path, self.file_list['PTN'])
-		regex1 = re.compile(r'(.)\s+(.*)\s+(input|output)', re.I)  # match signal name
-		regex2 = re.compile(r'^\*{10}$')  # match period partition
-		regex3 = re.compile(r'(.)\s+b([0|1|x|z])')  # match testbench
+		# regex1 = re.compile(r'(.)\s+(.*)\s+(input|output)', re.I)  # match signal name
+		regex1 = re.compile(r'(.)\s+(\w+)\s*(\[(\d+)(:?)(\d*)\])?\s+(input|output)', re.I)  # match signal name
+		regex2 = re.compile(r'^\*{10}')                    # match period partition
+		regex3 = re.compile(r'(.)\s+b([0|1|x|z]+)')        # match test bench
 
 		# if not os.path.exists(write_path):
 		# 	os.mkdir(write_path)
-		with open(path, "r") as f:
+		with open(path, "rb") as f:
+			# print("enter cycle")
 			if not self.entri_dict:
 				write_mask(fw, self.sig2pos, self.sig2pio)
 				write_operator(fw, TESTBENCH_OP, 0)
 			line = f.readline()
 			while line:
+				# print(line, def_state)
 				# definition stage, return sym2sig = {symbol:signal, ...}
 				if def_state:
 					m1 = regex1.match(line)
 					if m1:
-						sym2sig[m1.group(1)] = m1.group(2)
+						if m1.group(5):  # Combined bus
+							sym2sig[m1.group(1)] = (m1.group(2), int(m1.group(4)), int(m1.group(6)))  # symbol => (bus, MSB, LSB)
+						elif m1.group(3):
+							sym2sig[m1.group(1)] = m1.group(2) + m1.group(3)
+						else:
+							sym2sig[m1.group(1)] = m1.group(2)
 					else:
 						if regex2.match(line):
 							f.readline()  # skip the 2nd star row
@@ -314,18 +323,29 @@ class PatternGen(object):
 				else:
 					# match next tick; write last tick to file
 					m2 = regex2.match(line)
+					# print(m2)
+					# print(pos2val)
 					if m2 and regex2.match(f.readline()):  # skip 2nd star row # WARNING
+						# print('write')
 						write_content(fw, pos2val)  # Write testbench to binary file.
 						tb_counter += 1
 
 					# match testbench
 					m3 = regex3.match(line)
 					if m3:
-						value = m3.group(2)
-						if value == 'x':
-							value = x_val
 						key = m3.group(1)
-						pos2val[self.sig2pos.setdefault(sym2sig[key], None)] = value
+						value = m3.group(2)
+						if isinstance(sym2sig[key], tuple):
+							bus_ele = sym2sig[key]
+							bus_width = bus_ele[1] - bus_ele[2]
+							value = '0' * (bus_width - len(value)) + value  # Fill 0 on the left
+							for i in range(bus_width):
+								bus_sig = '{}[{}]'.format(bus_ele[0], str(bus_ele[1]-i))
+								pos2val[self.sig2pos.setdefault(bus_sig, None)] = value[i]
+						else:
+							if value == 'x':
+								value = x_val
+							pos2val[self.sig2pos.setdefault(sym2sig[key], None)] = value
 						if sym2sig[key] in self.entri_dict:
 							entri = sym2sig[key]
 							if pos2val[self.sig2pos[entri]] == '1':
@@ -467,8 +487,11 @@ class PatternGen(object):
 			write_content(fw, self.last_pos2val)
 			self.tick += 1
 
-	def rpt2vcd(self, rpt, vcd):
-		pass
+	def trf2vcd(self, trf, vcd):
+		path_trf = os.path.join(self.path, trf)
+		path_vcd = os.path.join(self.path, vcd)
+		with open(path_trf, 'rb') as ft, open(path_vcd, 'wb') as fv:
+			pass
 
 	def write_command(self, fw):
 		pos2val = {}
@@ -559,9 +582,8 @@ class PatternGen(object):
 
 @timer
 def test():
-	# from patternGen import PatternGen
-	# pattern = PatternGen('pin_test', 'tfo_demo.tfo')
-	pattern = PatternGen('CLK', 'tfo_demo.tfo', '-legacy')  # Test txt(vcd) format.
+	pattern = PatternGen('pin_test', 'tfo_demo.tfo')
+	# pattern = PatternGen('CLK', 'tfo_demo.tfo', '-legacy')  # Test txt(vcd) format.
 	pattern.write()
 	# print('path = ' + pattern.path)
 	# print('include path = ' + pattern.include_path)
@@ -577,8 +599,6 @@ def test():
 	# print('sig2pos = ' + str(pattern.sig2pos))
 
 	print('\n'.join(['%s = %s' % item for item in pattern.__dict__.items()]))
-	# print(pattern.__dir__())
-	# pattern.write()
 
 
 if __name__ == "__main__":
