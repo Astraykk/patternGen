@@ -3,7 +3,7 @@ filelist = {'ATF': 'pin_test.atf', 'BIN': u'pin_test_0517.bin',
              'RPT': u'pin_test.rpt', 'PIO': u'pin_test.pio',
              'SUCF': u'LX200.sucf', 'SBC': u'LX200.sbc',
              'UCF': u'pin_test.ucf', 'LBF': u'LB0101.lbf',
-             'TCF': 'F93K.tcf', 'WAV': u'pin_test.wav',
+             'TCF': 'F93K.bak.tcf', 'WAV': u'pin_test.wav',
              'BIT': u'pin_test', 'SPIO': u'LX200.spio',
              'DWM': u'SelectMAP32'}
 cmd2spio = {'RDWR_B': 'input', 'D14': 'input', 'D16': 'input', 'TMS': 'input', 'D10': 'input', 'PROG_B': 'input', 'D12': 'input', 'D13': 'input', 'D15': 'input', 'D19': 'input', 'D30': 'input', 'D31': 'input', 'D7': 'input', 'DONE': 'output', 'M0': 'input', 'M2': 'input', 'D28': 'input', 'D11': 'input', 'DOUT_BUSY': 'output', 'TCK': 'input', 'D20': 'input', 'D29': 'input', 'PWRDWN_B': 'input', 'D17': 'input', 'D18': 'input', 'D23': 'input', 'D22': 'input', 'D25': 'input', 'D24': 'input', 'D27': 'input', 'D26': 'input', 'CCLK': 'input', 'D_IN': 'input', 'TDI': 'input', 'TDO': 'output', 'D21': 'input', 'INIT_B': 'output', 'CS_B': 'input', 'D8': 'input', 'D9': 'input', 'D6': 'input', 'M1': 'input', 'D4': 'input', 'D5': 'input', 'D2': 'input', 'D3': 'input', 'D0': 'input', 'D1': 'input'}

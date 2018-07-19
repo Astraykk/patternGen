@@ -1,0 +1,18 @@
+<TFO name = "tfo_demo" path = "E:/stage1_horizontal_double_0/" comment = "1" author = "xy" date = "2018/04/08">
+	<LBF type = "LB0101">
+	<LIST>
+		<DUT name = "1" type = "LX200">
+		<TEST name = "stage1_horizontal_double_0" path = "."> 
+			<DWM name = "SelectMAP32"/>
+			<ITM name = "stage1_horizontal_double_0"/>
+			<PIO name = "stage1_horizontal_double_0"/>
+			<BIT name = "stage1_horizontal_double_0"/>
+			<VCD name = "stage1_horizontal_double_0"/>
+			<UCF name = "stage1_horizontal_double_0"/>
+			<TXT name = "stage1_horizontal_double_0"/>
+			<RPT name = "stage1_horizontal_double_0"/>
+			<WAV name = "stage1_horizontal_double_0" type = "" compare = "yes"/>
+		</TEST>
+	</LIST>
+</TFO>
+			

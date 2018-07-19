@@ -58,6 +58,18 @@ def itm_parser(relpath, file):
 	return soup.find('CYCLE')['period']
 
 
+def txt2pio_ucf(txt, pio, ucf):
+	with open(txt, 'r') as ft, open(pio, 'w') as fp, open(ucf, 'w') as fu:
+		regex = re.compile(r'(input|output)s\["(.*)"\]\s+=\s+(.*)')
+		for line in ft.readlines():
+			m = regex.match(line)
+			if m:
+				line_pio = 'NET "{}" DIR = {};\n'.format(m.group(2), m.group(1))
+				line_ucf = 'NET "{}" LOC = {};\n'.format(m.group(2), m.group(3))
+				fp.write(line_pio)
+				fu.write(line_ucf)
+
+
 """Write operation, mask, or testbench"""
 
 
@@ -139,6 +151,7 @@ def get_sig_value(dictionary, tick=0):
 
 class PatternGen(object):
 	# path and file
+	project_name = ''
 	path = '.'
 	command = []
 	include_path = os.path.join(DIRECTORY, INCLUDE_PATH)
@@ -162,6 +175,7 @@ class PatternGen(object):
 	entri_dict = {}
 
 	def __init__(self, path, tfo_file, command='-normal'):
+		self.project_name = path
 		self.path = os.path.join(DIRECTORY, path)
 		self.command = command.split('-')           # Get command: -normal, -legacy, ...
 		self.tfo_parser(tfo_file)                   # Get position of user files.
@@ -283,7 +297,7 @@ class PatternGen(object):
 		return sig2pos
 
 	def txt_parser(self, fw):
-		print("enter func")
+		# print("enter func")
 		tb_counter = 0       # length of test bench in operation code
 		def_state = True     # definition state
 		x_val = 1            # default value of x
@@ -298,20 +312,24 @@ class PatternGen(object):
 
 		# if not os.path.exists(write_path):
 		# 	os.mkdir(write_path)
-		with open(path, "rb") as f:
-			# print("enter cycle")
+		with open(path, "r") as f:
 			if not self.entri_dict:
 				write_mask(fw, self.sig2pos, self.sig2pio)
 				write_operator(fw, TESTBENCH_OP, 0)
-			line = f.readline()
+				line = 1
 			while line:
-				# print(line, def_state)
+				line = f.readline()
+				# print(line)
 				# definition stage, return sym2sig = {symbol:signal, ...}
 				if def_state:
 					m1 = regex1.match(line)
 					if m1:
 						if m1.group(5):  # Combined bus
-							sym2sig[m1.group(1)] = (m1.group(2), int(m1.group(4)), int(m1.group(6)))  # symbol => (bus, MSB, LSB)
+							MSB = int(m1.group(4))
+							LSB = int(m1.group(6))
+							# if MSB < LSB:
+							# 	MSB, LSB = (LSB, MSB)
+							sym2sig[m1.group(1)] = (m1.group(2), MSB, LSB)  # symbol => (bus, MSB, LSB)
 						elif m1.group(3):
 							sym2sig[m1.group(1)] = m1.group(2) + m1.group(3)
 						else:
@@ -334,14 +352,18 @@ class PatternGen(object):
 					m3 = regex3.match(line)
 					if m3:
 						key = m3.group(1)
+						if key not in sym2sig:
+							continue
 						value = m3.group(2)
 						if isinstance(sym2sig[key], tuple):
 							bus_ele = sym2sig[key]
 							bus_width = bus_ele[1] - bus_ele[2]
-							value = '0' * (bus_width - len(value)) + value  # Fill 0 on the left
-							for i in range(bus_width):
+							bus_signal = bus_width > 0 and 1 or -1
+							value = '0' * (abs(bus_width) - len(value)) + value  # Fill 0 on the left
+							for i in range(0, bus_width + bus_signal, bus_signal):
 								bus_sig = '{}[{}]'.format(bus_ele[0], str(bus_ele[1]-i))
-								pos2val[self.sig2pos.setdefault(bus_sig, None)] = value[i]
+								pos2val[self.sig2pos.setdefault(bus_sig, None)] = value[abs(i)]
+								print('signal = %s, value = %s' % (bus_sig, value[abs(i)]))
 						else:
 							if value == 'x':
 								value = x_val
@@ -356,7 +378,7 @@ class PatternGen(object):
 							write_mask(fw, self.sig2pos, self.sig2pio)
 							write_operator(fw, TESTBENCH_OP, 0)
 							tb_counter = 0
-				line = f.readline()
+				# line = f.readline()
 			write_content(fw, pos2val)
 			tb_counter += 1
 			write_length(fw, tb_counter)
@@ -493,6 +515,12 @@ class PatternGen(object):
 		with open(path_trf, 'rb') as ft, open(path_vcd, 'wb') as fv:
 			pass
 
+	def write_attr(self):
+		write_path = os.path.join(self.path, self.project_name)
+		with open(write_path, 'w') as fw:
+			fw.write('\n'.join(['%s = %s' % item for item in self.__dict__.items()]))
+			fw.write()
+
 	def write_command(self, fw):
 		pos2val = {}
 		for key, flag in self.cmd2flag.items():
@@ -582,8 +610,11 @@ class PatternGen(object):
 
 @timer
 def test():
-	pattern = PatternGen('pin_test', 'tfo_demo.tfo')
+	# pattern = PatternGen('pin_test', 'tfo_demo.tfo')
 	# pattern = PatternGen('CLK', 'tfo_demo.tfo', '-legacy')  # Test txt(vcd) format.
+	# pattern = PatternGen('LX200', 'mul1.tfo', '-legacy')  # Test bus.
+	pattern = PatternGen('stage1_horizontal_double_0', 'tfo_demo.tfo', '-legacy')  # Test bus.
+
 	pattern.write()
 	# print('path = ' + pattern.path)
 	# print('include path = ' + pattern.include_path)
@@ -598,6 +629,8 @@ def test():
 	# print('entri_dict = ' + str(pattern.entri_dict))
 	# print('sig2pos = ' + str(pattern.sig2pos))
 
+	print(pattern.__dict__.keys())
+	print(pattern.file_list)
 	print('\n'.join(['%s = %s' % item for item in pattern.__dict__.items()]))
 
 

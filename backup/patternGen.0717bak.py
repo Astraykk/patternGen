@@ -142,7 +142,7 @@ class PatternGen(object):
 	path = '.'
 	command = []
 	include_path = os.path.join(DIRECTORY, INCLUDE_PATH)
-	file_list = {'TCF': 'F93K.tcf', 'ATF': 'pin_test.atf'}
+	file_list = {'TCF': 'F93K.bak.tcf', 'ATF': 'pin_test.atf'}
 
 	# variable
 	tick = 0      # write clock
@@ -559,8 +559,8 @@ class PatternGen(object):
 
 @timer
 def test():
-	# pattern = PatternGen('pin_test', 'tfo_demo.tfo')
-	pattern = PatternGen('CLK', 'tfo_demo.tfo', '-legacy')  # Test txt(vcd) format.
+	# pattern = PatternGen('pin_test', 'mul1.tfo')
+	pattern = PatternGen('CLK', 'mul1.tfo', '-legacy')  # Test txt(vcd) format.
 	pattern.write()
 	# print('path = ' + pattern.path)
 	# print('include path = ' + pattern.include_path)
