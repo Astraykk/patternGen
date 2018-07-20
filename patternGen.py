@@ -155,7 +155,7 @@ class PatternGen(object):
 	path = '.'
 	command = []
 	include_path = os.path.join(DIRECTORY, INCLUDE_PATH)
-	file_list = {'TCF': 'F93K.tcf', 'ATF': 'pin_test.atf'}
+	file_list = {'TCF': 'F93K.tcf', 'ATF': 'test_tri.atf'}
 
 	# variable
 	tick = 0      # write clock
@@ -235,9 +235,11 @@ class PatternGen(object):
 					pio_dict[m.group(1)] = io
 					if io == 'inout':
 						tri = regex2.match(m.group(3)).group(1)
-						# print(1, tri)
-						entri_dict[tri] = m.group(1)
-		# print(pio_dict, entri_dict)
+						if tri not in entri_dict:
+							entri_dict[tri] = [m.group(1)]
+						else:
+							entri_dict[tri].append(m.group(1))
+		print(pio_dict, entri_dict)
 		return pio_dict, entri_dict
 
 	@staticmethod
@@ -251,10 +253,6 @@ class PatternGen(object):
 				if m:
 					sig2pin[m.group(1)] = m.group(2).strip()
 		return sig2pin
-
-	@staticmethod
-	def txt_ucf_parser(path, file):
-		return ()
 
 	def atf_parser(self, file):
 		# print(self.path)
@@ -369,11 +367,12 @@ class PatternGen(object):
 								value = x_val
 							pos2val[self.sig2pos.setdefault(sym2sig[key], None)] = value
 						if sym2sig[key] in self.entri_dict:
-							entri = sym2sig[key]
-							if pos2val[self.sig2pos[entri]] == '1':
-								self.sig2pio[self.entri_dict[entri]] = 'output'
-							else:
-								self.sig2pio[self.entri_dict[entri]] = 'input'
+							entri_list = self.entri_dict[sym2sig[key]]
+							for entri in entri_list:
+								if value == '1':
+									self.sig2pio[entri] = 'output'
+								else:
+									self.sig2pio[entri] = 'input'
 							write_length(fw, tb_counter)
 							write_mask(fw, self.sig2pos, self.sig2pio)
 							write_operator(fw, TESTBENCH_OP, 0)
@@ -435,11 +434,12 @@ class PatternGen(object):
 						key = m3.group(2)
 						pos2val[self.sig2pos.setdefault(sym2sig[key], None)] = value
 						if sym2sig[key] in self.entri_dict:
-							entri = sym2sig[key]
-							if pos2val[self.sig2pos[entri]] == '1':
-								self.sig2pio[self.entri_dict[entri]] = 'output'
-							else:
-								self.sig2pio[self.entri_dict[entri]] = 'input'
+							entri_list = self.entri_dict[sym2sig[key]]
+							for entri in entri_list:
+								if value == '1':
+									self.sig2pio[entri] = 'output'
+								else:
+									self.sig2pio[entri] = 'input'
 							write_length(fw, tb_counter)
 							write_mask(fw, self.sig2pos, self.sig2pio)
 							write_operator(fw, TESTBENCH_OP, 0)
@@ -512,8 +512,15 @@ class PatternGen(object):
 	def trf2vcd(self, trf, vcd):
 		path_trf = os.path.join(self.path, trf)
 		path_vcd = os.path.join(self.path, vcd)
-		with open(path_trf, 'rb') as ft, open(path_vcd, 'wb') as fv:
-			pass
+		title = {
+			'date': time.asctime(time.localtime(time.time())),
+			'version': 'ModelSim Version 10.1c',
+			'timescale': '1us'
+		}
+		with open(path_trf, 'rb') as ft, open(path_vcd, 'w') as fv:
+			for item in title:
+				fv.write('${}\n\t{}\n$end'.format(item, title[item]))
+			# Signal definition. Copy the original vcd file.
 
 	def write_attr(self):
 		write_path = os.path.join(self.path, self.project_name)
@@ -610,10 +617,11 @@ class PatternGen(object):
 
 @timer
 def test():
-	# pattern = PatternGen('pin_test', 'tfo_demo.tfo')
+	pattern = PatternGen('pin_test', 'tfo_demo.tfo')
 	# pattern = PatternGen('CLK', 'tfo_demo.tfo', '-legacy')  # Test txt(vcd) format.
 	# pattern = PatternGen('LX200', 'mul1.tfo', '-legacy')  # Test bus.
-	pattern = PatternGen('stage1_horizontal_double_0', 'tfo_demo.tfo', '-legacy')  # Test bus.
+	# pattern = PatternGen('stage1_horizontal_double_0', 'tfo_demo.tfo', '-legacy')  # Test bus.
+	# pattern = PatternGen('test_tri', 'tfo_demo.tfo')  # Test trigate bus.
 
 	pattern.write()
 	# print('path = ' + pattern.path)

@@ -10,6 +10,7 @@
 			<VCD name = "test_tri"/>
 			<UCF name = "test_tri"/>
 			<RPT name = "test_tri"/>
+			<ATF name = "test_tri"/>
 			<WAV name = "test_tri" type = "" compare = "yes"/>
 		</TEST>
 	</LIST>
