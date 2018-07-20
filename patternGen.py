@@ -1,3 +1,4 @@
+#!/usr/bin/python
 import re, sys, os, struct
 import bs4
 from bs4 import BeautifulSoup
