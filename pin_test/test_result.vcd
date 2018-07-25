@@ -1,0 +1,19 @@
+$date
+	Wed Jul 25 15:56:48 2018
+$end
+$version
+	ModelSim Version 10.1c
+$end
+$timescale
+	1us
+$end
+$scope module pin_test_tb $end
+$var reg 1 ! pin_in $end
+$var reg 1 # data_in $end
+$var reg 1 " en_output $end
+$var wire 1 % data_out $end
+$var wire 1 $ pin_out $end
+$var wire 1 ' in_tri_inout $end
+$var wire 1 & tri_inout $end
+$upscope $end
+$enddefinitions $end
