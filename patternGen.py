@@ -149,7 +149,12 @@ def get_sig_value(dictionary, tick=0):
 
 def find_diff(x, y):
 	# Compare two integers and return the difference.
-	pass
+	bit2val = {}
+	xor = x ^ y
+	for i in range(8):
+		if (1 << i) & xor:
+			bit2val[i] = (x >> i) & 1
+	return bit2val
 
 
 """File Parsers"""
@@ -165,10 +170,10 @@ class PatternGen(object):
 	config = {}
 
 	# variable
-	tick = 0      # write clock
-	bs_start = 0  # start of bitstream
-	cclk_pos = (0, 0)
-	last_pos2val = {}
+	tick = 0            # write clock
+	bs_start = 0        # start of bitstream
+	cclk_pos = (0, 0)   # position of cclk, used for writing nop
+	last_pos2val = {}   # record the infomation of last content
 
 	# signal dictionary
 	cmd2spio = {}
@@ -248,7 +253,7 @@ class PatternGen(object):
 							entri_dict[tri] = [m.group(1)]
 						else:
 							entri_dict[tri].append(m.group(1))
-		print(pio_dict, entri_dict)
+		# print(pio_dict, entri_dict)
 		return pio_dict, entri_dict
 
 	@staticmethod
@@ -519,10 +524,11 @@ class PatternGen(object):
 			self.tick += 1
 
 	def trf2vcd(self, trf, vcd):
+		tick = 0
 		path_trf = os.path.join(self.path, trf)
 		path_vcd = os.path.join(self.path, vcd)
-		pos2sig = {v:k for k,v in self.sig2pos.items()}
-		sig2sym = {v:k for k,v in self.sym2sig.items()}
+		pos2sig = {v: k for k, v in self.sig2pos.items()}
+		sig2sym = {v: k for k, v in self.sym2sig.items()}
 		title = {
 			'date': time.asctime(time.localtime(time.time())),
 			'version': 'ModelSim Version 10.1c',
@@ -541,18 +547,30 @@ class PatternGen(object):
 			line = ft.read(BIN_BYTE_WIDTH)  # Bytes type
 			last_line = None
 			while line:
-				if last_line and line != last_line:
-					line_tuple = struct.unpack('>'+'B'*16, line)
+				line_tuple = struct.unpack('>' + 'B' * 16, line)
+				# print(line_tuple)
+				if not last_line:
+					fv.write('#{}\n$dumpvars\n'.format(tick))
+					for sig in self.sig2pos:
+						pos = self.sig2pos[sig]
+						if pos:
+							val = (line_tuple[pos[0]-1] >> pos[1]) & 1
+							fv.write('{}{}\n'.format(val, sig2sym.setdefault(sig, 'EOF')))
+					fv.write('$end\n')
+				elif line != last_line:
+					fv.write('#{}\n'.format(tick))
 					last_line_tuple = struct.unpack('>'+'B'*16, last_line)
 					diff = map(find_diff, line_tuple, last_line_tuple)  # Return a list of dictionary
+					# print(diff)
 					for i, byte_dict in enumerate(diff):
 						for bit, val in byte_dict.items():
-							pos = (i, bit)
-							sig = pos2sig[pos]
-							fv.write(val+sig2sym[sig])
-
+							pos = (i+1, bit)
+							# print(pos)
+							sig = pos2sig.setdefault(pos, 0)
+							fv.write('{}{}\n'.format(val, sig2sym.setdefault(sig, 'EOF')))
 				last_line = line
 				line = ft.read(BIN_BYTE_WIDTH)
+				tick += 1
 
 	def write_attr(self):
 		write_path = os.path.join(self.path, self.project_name)
@@ -655,8 +673,6 @@ def test():
 	# pattern = PatternGen('stage1_horizontal_double_0', 'tfo_demo.tfo', '-legacy')  # Test bus.
 	# pattern = PatternGen('test_tri', 'tfo_demo.tfo')  # Test trigate bus.
 
-	pattern.write()
-	pattern.trf2vcd('pin_test.trf', 'test_result.vcd')
 	# print('path = ' + pattern.path)
 	# print('include path = ' + pattern.include_path)
 	# print('file list = ' + str(pattern.file_list))
@@ -669,10 +685,12 @@ def test():
 	# print('sig2pio = ' + str(pattern.sig2pio))
 	# print('entri_dict = ' + str(pattern.entri_dict))
 	# print('sig2pos = ' + str(pattern.sig2pos))
-
 	print(pattern.__dict__.keys())
 	print(pattern.file_list)
 	print('\n'.join(['%s = %s' % item for item in pattern.__dict__.items()]))
+
+	pattern.write()
+	pattern.trf2vcd('pin_test.trf', 'test_result.vcd')
 
 
 if __name__ == "__main__":
