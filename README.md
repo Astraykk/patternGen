@@ -4,7 +4,7 @@ Generate test pattern on BR0101!
 
 from patternGen import PatternGen
 
-pattern = PatternGen('/path/to/project', 'tfo_name.tfo', '-command')
+pattern = PatternGen('/path/to/project', 'tfo_name.tfo', '-command')  # -legacy: txt格式
 
 pattern.write()  # 写入ptn文件
 
