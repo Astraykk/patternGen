@@ -22,6 +22,7 @@ END_OP = 0x80
 BIN_WIDTH = 128
 BIN_BYTE_WIDTH = int(BIN_WIDTH / 8)
 BITSTREAM_WIDTH = 32
+DEFAULT_SR = 1  # Default sample rate
 # end define
 
 """Tools"""
@@ -167,7 +168,7 @@ class PatternGen(object):
 	command = []
 	include_path = os.path.join(DIRECTORY, INCLUDE_PATH)
 	file_list = {'TCF': 'F93K.tcf', 'ATF': 'test_tri.atf'}
-	config = {}
+	config = {'sr': 1}  # Sample rate from .tcf file
 
 	# variable
 	tick = 0            # write clock
@@ -297,9 +298,11 @@ class PatternGen(object):
 		for key, value in sig2channel.items():
 			# FRAME & ASSEMBLY tag
 			connect_tag = soup.find(pogo=value[:3])
-			assembly_name = connect_tag['assembly']  # should search by 'AS0101',
+			assembly_name = connect_tag['assembly']                           # should search by 'AS0101',
 			wire_tag = soup.find(code=assembly_name).find(pogopin=value[3:])  # not this
 			channel = connect_tag['plug'] + wire_tag['plugpin']
+
+			self.config['sr'] = int(soup.find('CARD').get('samplerate') or DEFAULT_SR)  # Get sample rate, default is 1
 
 			# SIGMAP tag
 			mapping_tag = soup.find(channel=channel)
@@ -364,7 +367,7 @@ class PatternGen(object):
 					m3 = regex3.match(line)
 					if m3:
 						key = m3.group(1)
-						if key not in sym2sig:
+						if key not in self.sym2sig:
 							continue
 						value = m3.group(2)
 						if isinstance(self.sym2sig[key], tuple):
@@ -375,7 +378,7 @@ class PatternGen(object):
 							for i in range(0, bus_width + bus_signal, bus_signal):
 								bus_sig = '{}[{}]'.format(bus_ele[0], str(bus_ele[1]-i))
 								pos2val[self.sig2pos.setdefault(bus_sig, None)] = value[abs(i)]
-								print('signal = %s, value = %s' % (bus_sig, value[abs(i)]))
+								# print('signal = %s, value = %s' % (bus_sig, value[abs(i)]))
 						else:
 							if value == 'x':
 								value = x_val
@@ -523,8 +526,17 @@ class PatternGen(object):
 			write_content(fw, self.last_pos2val)
 			self.tick += 1
 
+	def get_symbol(self, signal, sig2sym):
+		if signal in sig2sym:
+			return sig2sym[signal]
+		else:
+			for key in sig2sym:
+				if signal in key:
+					return sig2sym[key]
+
 	def trf2vcd(self, trf, vcd):
 		tick = 0
+		sym2val = {}
 		path_trf = os.path.join(self.path, trf)
 		path_vcd = os.path.join(self.path, vcd)
 		pos2sig = {v: k for k, v in self.sig2pos.items()}
@@ -539,10 +551,14 @@ class PatternGen(object):
 				fv.write('${}\n\t{}\n$end\n'.format(item, title[item]))
 			fv.write('$scope module {}_tb $end\n'.format(self.project_name))
 			# Signal definition. Copy the original vcd file.
-			for symbol in self.sym2sig:  # TODO: handle bus
-				signal = self.sym2sig[symbol]
-				io = self.sig2pio[signal] == 'input' and 'reg' or 'wire'  # TODO: handle tri-gate
-				fv.write('$var {} 1 {} {} $end\n'.format(io, symbol, signal))
+			for symbol, signal in self.sym2sig.items():  # TODO: handle bus
+				if isinstance(signal, tuple):
+					io = self.sig2pio['{}[{}]'.format(signal[0], signal[1])] == 'input' and 'reg' or 'wire'
+					signal, width = '{}[{}:{}]'.format(signal[0], signal[1], signal[2]), abs(signal[1] - signal[2])
+				else:
+					width = 1
+					io = self.sig2pio[signal] == 'input' and 'reg' or 'wire'  # TODO: handle tri-gate
+				fv.write('$var {} {} {} {} $end\n'.format(io, width, symbol, signal))
 			fv.write('$upscope $end\n$enddefinitions $end\n')
 			line = ft.read(BIN_BYTE_WIDTH)  # Bytes type
 			last_line = None
@@ -551,11 +567,29 @@ class PatternGen(object):
 				# print(line_tuple)
 				if not last_line:
 					fv.write('#{}\n$dumpvars\n'.format(tick))
-					for sig in self.sig2pos:
-						pos = self.sig2pos[sig]
-						if pos:
-							val = (line_tuple[pos[0]-1] >> pos[1]) & 1
-							fv.write('{}{}\n'.format(val, sig2sym.setdefault(sig, 'EOF')))
+					# for sig in self.sig2pos:
+					# 	pos = self.sig2pos.get(sig)
+					# 	if pos:
+					# 		val = (line_tuple[pos[0]-1] >> pos[1]) & 1
+					# 	if sig2sym.get(sig):
+					# 		sym2val[sym] = val
+					for sym, sig in self.sym2sig.items():
+						if isinstance(sig, tuple):
+							bus_width = sig[1] - sig[2]
+							bus_signal = bus_width > 0 and 1 or -1
+							val = 'b'
+							for i in range(0, bus_width + bus_signal, bus_signal):
+								bus_sig = '{}[{}]'.format(sig[0], str(sig[1]-i))
+								bus_pos = self.sig2pos[bus_sig]
+								bus_val = (line_tuple[bus_pos[0]-1] >> bus_pos[1]) & 1
+								val = val + str(bus_val)
+							sym2val[sym] = val+' '
+						else:
+							pos = self.sig2pos.get(sig)
+							if pos:
+								sym2val[sym] = (line_tuple[pos[0]-1] >> pos[1]) & 1
+					for sym, val in sym2val.items():  # Write symbol + value together
+						fv.write('{}{}\n'.format(val, sym))
 					fv.write('$end\n')
 				elif line != last_line:
 					fv.write('#{}\n'.format(tick))
@@ -667,9 +701,9 @@ class PatternGen(object):
 
 @timer
 def test():
-	pattern = PatternGen('pin_test', 'tfo_demo.tfo')
+	# pattern = PatternGen(path='pin_test', tfo_file='tfo_demo.tfo')
 	# pattern = PatternGen('CLK', 'tfo_demo.tfo', '-legacy')  # Test txt(vcd) format.
-	# pattern = PatternGen('LX200', 'mul1.tfo', '-legacy')  # Test bus.
+	pattern = PatternGen('LX200', 'mul1.tfo', '-legacy')  # Test bus.
 	# pattern = PatternGen('stage1_horizontal_double_0', 'tfo_demo.tfo', '-legacy')  # Test bus.
 	# pattern = PatternGen('test_tri', 'tfo_demo.tfo')  # Test trigate bus.
 
@@ -690,7 +724,7 @@ def test():
 	print('\n'.join(['%s = %s' % item for item in pattern.__dict__.items()]))
 
 	pattern.write()
-	pattern.trf2vcd('pin_test.trf', 'test_result.vcd')
+	pattern.trf2vcd('test_result.trf', 'test_result.vcd')
 
 
 if __name__ == "__main__":
