@@ -1,7 +1,9 @@
-#!/usr/bin/python3
+#!/usr/bin/python
 import re, sys, os, struct
 import bs4
+from bs4 import BeautifulSoup
 import time
+# from filebrowser.sites import site
 # import timeit
 
 DIRECTORY = sys.path[0]   # /path/to/mysite/
@@ -48,7 +50,7 @@ def get_soup(path, file):
 	path = os.path.join(path, file)
 	# print(path)
 	with open(path, "r") as f:
-		soup = bs4.BeautifulSoup(f.read(), "xml")
+		soup = BeautifulSoup(f.read(), "xml")
 	return soup
 
 
@@ -164,6 +166,9 @@ def get_symbol(signal, sig2sym):
 			if signal in key:
 				return sig2sym[key]
 		return None
+
+
+"""File Parsers"""
 
 
 class PatternGen(object):
@@ -320,16 +325,21 @@ class PatternGen(object):
 		return sig2pos
 
 	def txt_parser(self, fw):
-		tb_counter = -1      # length of test bench in operation code
-		# def_state = True   # definition state
+		# print("enter func")
+		tb_counter = 0       # length of test bench in operation code
+		def_state = True     # definition state
 		x_val = 1            # default value of x
+		self.sym2sig = {}         # {symbolic_in_vcd: signal_name}
 		pos2val = {}         # {position(bit): signal(1|0|z|x)}
 		path = os.path.join(self.path, self.file_list['TXT'])
+		# write_path = os.path.join(self.path, self.file_list['PTN'])
 		# regex1 = re.compile(r'(.)\s+(.*)\s+(input|output)', re.I)  # match signal name
-		# regex1 = re.compile(r'(.)\s+(\w+)\s*(\[(\d+)(:?)(\d*)\])?\s+(input|output)', re.I)  # match signal name
+		regex1 = re.compile(r'(.)\s+(\w+)\s*(\[(\d+)(:?)(\d*)\])?\s+(input|output)', re.I)  # match signal name
 		regex2 = re.compile(r'^\*{10}')                    # match period partition
 		regex3 = re.compile(r'(.)\s+b([0|1|x|z]+)')        # match test bench
 
+		# if not os.path.exists(write_path):
+		# 	os.mkdir(write_path)
 		with open(path, "r") as f:
 			if not self.entri_dict:
 				write_mask(fw, self.sig2pos, self.sig2pio)
@@ -337,59 +347,85 @@ class PatternGen(object):
 			line = 1
 			while line:
 				line = f.readline()
-				# match next tick; write last tick to file
-				m2 = regex2.match(line)
-				if m2 and regex2.match(f.readline()):  # skip 2nd star row # WARNING
-					# print('write')
-					# print(pos2val)
-					write_content(fw, pos2val)  # Write testbench to binary file. Skip the first * line.
-					tb_counter += 1
-
-				# match testbench
-				m3 = regex3.match(line)
-				if m3:
-					key = m3.group(1)
-					if key not in self.sym2sig:
-						continue
-					value = m3.group(2)
-					if isinstance(self.sym2sig[key], tuple):
-						bus_ele = self.sym2sig[key]
-						bus_width = bus_ele[1] - bus_ele[2]
-						bus_signal = bus_width > 0 and 1 or -1
-						value = '0' * (abs(bus_width) - len(value)) + value  # Fill 0 on the left
-						for i in range(0, bus_width + bus_signal, bus_signal):
-							bus_sig = '{}[{}]'.format(bus_ele[0], str(bus_ele[1] - i))
-							pos2val[self.sig2pos.setdefault(bus_sig, None)] = value[abs(i)]
-						# print('signal = %s, value = %s' % (bus_sig, value[abs(i)]))
+				# print(line)
+				# definition stage, return sym2sig = {symbol:signal, ...}
+				if def_state:
+					m1 = regex1.match(line)
+					if m1:
+						if m1.group(5):  # Combined bus
+							MSB = int(m1.group(4))
+							LSB = int(m1.group(6))
+							# if MSB < LSB:
+							# 	MSB, LSB = (LSB, MSB)
+							self.sym2sig[m1.group(1)] = (m1.group(2), MSB, LSB)  # symbol => (bus, MSB, LSB)
+						elif m1.group(3):
+							self.sym2sig[m1.group(1)] = m1.group(2) + m1.group(3)
+						else:
+							self.sym2sig[m1.group(1)] = m1.group(2)
 					else:
-						if value == 'x':
-							value = x_val
-						pos2val[self.sig2pos.setdefault(self.sym2sig[key], None)] = value
-					if self.sym2sig[key] in self.entri_dict:
-						entri_list = self.entri_dict[self.sym2sig[key]]
-						for entri in entri_list:
-							if value == '1':
-								self.sig2pio[entri] = 'output'
-							else:
-								self.sig2pio[entri] = 'input'
-						write_length(fw, tb_counter)
-						write_mask(fw, self.sig2pos, self.sig2pio)
-						write_operator(fw, TESTBENCH_OP, 0)
-						tb_counter = 0
+						if regex2.match(line):
+							f.readline()  # skip the 2nd star row
+							def_state = False
+				else:
+					# match next tick; write last tick to file
+					m2 = regex2.match(line)
+					# print(m2)
+					# print(pos2val)
+					if m2 and regex2.match(f.readline()):  # skip 2nd star row # WARNING
+						# print('write')
+						write_content(fw, pos2val)  # Write testbench to binary file.
+						tb_counter += 1
+
+					# match testbench
+					m3 = regex3.match(line)
+					if m3:
+						key = m3.group(1)
+						if key not in self.sym2sig:
+							continue
+						value = m3.group(2)
+						if isinstance(self.sym2sig[key], tuple):
+							bus_ele = self.sym2sig[key]
+							bus_width = bus_ele[1] - bus_ele[2]
+							bus_signal = bus_width > 0 and 1 or -1
+							value = '0' * (abs(bus_width) - len(value)) + value  # Fill 0 on the left
+							for i in range(0, bus_width + bus_signal, bus_signal):
+								bus_sig = '{}[{}]'.format(bus_ele[0], str(bus_ele[1]-i))
+								pos2val[self.sig2pos.setdefault(bus_sig, None)] = value[abs(i)]
+								# print('signal = %s, value = %s' % (bus_sig, value[abs(i)]))
+						else:
+							if value == 'x':
+								value = x_val
+							pos2val[self.sig2pos.setdefault(self.sym2sig[key], None)] = value
+						if self.sym2sig[key] in self.entri_dict:
+							entri_list = self.entri_dict[self.sym2sig[key]]
+							for entri in entri_list:
+								if value == '1':
+									self.sig2pio[entri] = 'output'
+								else:
+									self.sig2pio[entri] = 'input'
+							write_length(fw, tb_counter)
+							write_mask(fw, self.sig2pos, self.sig2pio)
+							write_operator(fw, TESTBENCH_OP, 0)
+							tb_counter = 0
+				# line = f.readline()
 			write_content(fw, pos2val)
 			tb_counter += 1
-			# print(tb_counter)
 			write_length(fw, tb_counter)
 
 	def vcd_parser(self, fw):
 		tick = -1         # current tick
 		tb_counter = -1   # length of testbench in operation code
-		x_val = 1         # default value of x
+		def_state = True  # definition state
+		self.sym2sig = {}      # {symbolic_in_vcd: signal_name}
 		pos2val = {}      # {position(bit): signal(1|0|z|x)}
 		path = os.path.join(self.path, self.file_list['VCD'])
+		write_path = os.path.join(self.path, self.file_list['PTN'])
+		regex1 = re.compile(r'\$var .+ \d+ (.) (.+) \$end', re.I)  # match signal name
 		regex2 = re.compile(r'#(\d+)')                             # match period
 		regex3 = re.compile(r'([0|1|x|z])(.)')                     # match testbench
 
+		if not os.path.exists(write_path):
+			os.mknod(write_path)
 		with open(path, "r") as f:
 			if not self.entri_dict:
 				write_mask(fw, self.sig2pos, self.sig2pio)
@@ -398,50 +434,46 @@ class PatternGen(object):
 				# end of file
 				if line == '$dumpoff':
 					break
-					# match next tick; write last tick to file
-				m2 = regex2.match(line)
-				if m2:
-					vcd_tick = m2.group(1)
-					while True:
-						write_content(fw, pos2val)  # Write testbench to binary file.
-						tb_counter += 1
-						tick += 1
-						if tick == int(vcd_tick):
-							break
-					continue
 
-				# match testbench
-				m3 = regex3.match(line)
-				if m3:
-					value = m3.group(1)
-					key = m3.group(2)
-					if key not in self.sym2sig:
-						continue
-					# pos2val[self.sig2pos.setdefault(self.sym2sig[key], None)] = value
-					if isinstance(self.sym2sig[key], tuple):
-						bus_ele = self.sym2sig[key]
-						bus_width = bus_ele[1] - bus_ele[2]
-						bus_signal = bus_width > 0 and 1 or -1
-						value = '0' * (abs(bus_width) - len(value)) + value  # Fill 0 on the left
-						for i in range(0, bus_width + bus_signal, bus_signal):
-							bus_sig = '{}[{}]'.format(bus_ele[0], str(bus_ele[1] - i))
-							pos2val[self.sig2pos.setdefault(bus_sig, None)] = value[abs(i)]
-						# print('signal = %s, value = %s' % (bus_sig, value[abs(i)]))
+				# definition stage, return sym2sig = {symbol:signal, ...}
+				if def_state:
+					m1 = regex1.match(line)
+					if m1:
+						self.sym2sig[m1.group(1)] = m1.group(2)
 					else:
-						if value == 'x':
-							value = x_val
+						if re.match(r'\$upscope', line):
+							def_state = False
+					continue
+				else:
+					# match next tick; write last tick to file
+					m2 = regex2.match(line)
+					if m2:
+						vcd_tick = m2.group(1)
+						while True:
+							write_content(fw, pos2val)  # Write testbench to binary file.
+							tb_counter += 1
+							tick += 1
+							if tick == int(vcd_tick):
+								break
+						continue
+
+					# match testbench
+					m3 = regex3.match(line)
+					if m3:
+						value = m3.group(1)
+						key = m3.group(2)
 						pos2val[self.sig2pos.setdefault(self.sym2sig[key], None)] = value
-					if self.sym2sig[key] in self.entri_dict:
-						entri_list = self.entri_dict[self.sym2sig[key]]
-						for entri in entri_list:
-							if value == '1':
-								self.sig2pio[entri] = 'output'
-							else:
-								self.sig2pio[entri] = 'input'
-						write_length(fw, tb_counter)
-						write_mask(fw, self.sig2pos, self.sig2pio)
-						write_operator(fw, TESTBENCH_OP, 0)
-						tb_counter = 0
+						if self.sym2sig[key] in self.entri_dict:
+							entri_list = self.entri_dict[self.sym2sig[key]]
+							for entri in entri_list:
+								if value == '1':
+									self.sig2pio[entri] = 'output'
+								else:
+									self.sig2pio[entri] = 'input'
+							write_length(fw, tb_counter)
+							write_mask(fw, self.sig2pos, self.sig2pio)
+							write_operator(fw, TESTBENCH_OP, 0)
+							tb_counter = 0
 			write_length(fw, tb_counter)
 
 	def sbc_parser(self, file):
@@ -620,7 +652,7 @@ class PatternGen(object):
 								for key in sig2sym:
 									if re.sub(r'\[\d+\]', '', sig) in key:
 										sym2val[sig2sym[key]] = self.get_bus_val(line_tuple, key)
-										# print(sig2sym[key], sym2val[sig2sym[key]])
+										print(sig2sym[key], sym2val[sig2sym[key]])
 										break
 					for sym, val in sym2val.items():
 						fv.write('{}{}\n'.format(val, sym))
@@ -746,7 +778,7 @@ def test():
 	print('\n'.join(['%s = %s' % item for item in pattern.__dict__.items()]))
 
 	pattern.write()
-	# print(pattern.sym2sig)
+	print(pattern.sym2sig)
 	pattern.trf2vcd('test_result.trf', 'test_result.vcd')
 
 

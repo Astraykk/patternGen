@@ -1,43 +1,43 @@
-$timescale
-	1us
-$end
 $date
-	Thu Aug  2 14:43:11 2018
+	Wed Aug  1 09:37:31 2018
 $end
 $version
 	ModelSim Version 10.1c
 $end
+$timescale
+	1us
+$end
 $scope module mul1_tb $end
-$var wire 1 & ao[3] $end
-$var reg 1 # sr $end
-$var wire 1 ( ao[1] $end
-$var wire 1 , bo[1] $end
-$var wire 1 + bo[2] $end
-$var wire 1 ) ao[0] $end
 $var reg 4 ! ai[3:0] $end
-$var wire 1 * bo[3] $end
-$var wire 1 ' ao[2] $end
-$var wire 1 - bo[0] $end
+$var reg 1 # sr $end
 $var reg 4 " bi[3:0] $end
-$var reg 1 $ ce $end
 $var reg 1 % clk $end
+$var reg 1 $ ce $end
+$var wire 1 ' ao[2] $end
+$var wire 1 & ao[3] $end
+$var wire 1 ) ao[0] $end
+$var wire 1 ( ao[1] $end
+$var wire 1 + bo[2] $end
+$var wire 1 * bo[3] $end
+$var wire 1 - bo[0] $end
+$var wire 1 , bo[1] $end
 $upscope $end
 $enddefinitions $end
 #0
 $dumpvars
-0&
-0#
-0(
-1,
-0+
-0)
 b0000 !
-1*
-0'
-0-
+0#
 b0000 "
-0$
 0%
+0$
+0'
+0&
+0)
+0(
+0+
+1*
+0-
+1,
 $end
 #1
 1%
@@ -238,8 +238,8 @@ $end
 #99
 1%
 #100
-1)
 b0001 !
+1)
 0%
 #101
 1%
@@ -643,8 +643,8 @@ b0010 !
 #299
 1%
 #300
-1)
 b0011 !
+1)
 0%
 #301
 1%
@@ -845,9 +845,9 @@ b0011 !
 #399
 1%
 #400
-1'
 b0100 !
 0%
+1'
 #401
 1%
 #402
@@ -1048,8 +1048,8 @@ b0100 !
 #499
 1%
 #500
-1)
 b0101 !
+1)
 0%
 #501
 1%
@@ -1454,8 +1454,8 @@ b0110 !
 #699
 1%
 #700
-1)
 b0111 !
+1)
 0%
 #701
 1%
@@ -1656,9 +1656,9 @@ b0111 !
 #799
 1%
 #800
-1&
 b1000 !
 0%
+1&
 #801
 1%
 #802
@@ -1859,8 +1859,8 @@ b1000 !
 #899
 1%
 #900
-1)
 b1001 !
+1)
 0%
 #901
 1%
@@ -2265,8 +2265,8 @@ b1010 !
 #1099
 1%
 #1100
-1)
 b1011 !
+1)
 0%
 #1101
 1%
@@ -2451,8 +2451,8 @@ b1011 !
 #1191
 1%
 #1192
-0'
 0%
+0'
 #1193
 1%
 #1194
@@ -2468,9 +2468,9 @@ b1011 !
 #1199
 1%
 #1200
-1'
 b1100 !
 0%
+1'
 #1201
 1%
 #1202
