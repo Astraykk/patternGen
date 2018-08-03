@@ -1,8 +1,7 @@
+#!/usr/bin/python3
 import re, sys, os, struct
 import bs4
-from bs4 import BeautifulSoup
 import time
-# from filebrowser.sites import site
 # import timeit
 
 DIRECTORY = sys.path[0]   # /path/to/mysite/
@@ -21,6 +20,7 @@ END_OP = 0x80
 BIN_WIDTH = 128
 BIN_BYTE_WIDTH = int(BIN_WIDTH / 8)
 BITSTREAM_WIDTH = 32
+DEFAULT_SR = 1  # Default sample rate
 # end define
 
 """Tools"""
@@ -48,7 +48,7 @@ def get_soup(path, file):
 	path = os.path.join(path, file)
 	# print(path)
 	with open(path, "r") as f:
-		soup = BeautifulSoup(f.read(), "xml")
+		soup = bs4.BeautifulSoup(f.read(), "xml")
 	return soup
 
 
@@ -146,22 +146,40 @@ def get_sig_value(dictionary, tick=0):
 		return vp
 
 
-"""File Parsers"""
+def find_diff(x, y):
+	# Compare two integers and return the difference.
+	bit2val = {}
+	xor = x ^ y
+	for i in range(8):
+		if (1 << i) & xor:
+			bit2val[i] = (x >> i) & 1
+	return bit2val
+
+
+def get_symbol(signal, sig2sym):
+	if signal in sig2sym:
+		return sig2sym[signal]
+	else:
+		for key in sig2sym:
+			if signal in key:
+				return sig2sym[key]
+		return None
 
 
 class PatternGen(object):
 	# path and file
 	project_name = ''
 	path = '.'
-	command = []
+	# command = []
 	include_path = os.path.join(DIRECTORY, INCLUDE_PATH)
-	file_list = {'TCF': 'F93K.tcf', 'ATF': 'pin_test.atf'}
+	file_list = {'TCF': 'F93K.tcf', 'ATF': 'test_tri.atf'}
+	config = {'sr': 1, 'command': 'normal'}  # Sample rate from .tcf file
 
 	# variable
-	tick = 0      # write clock
-	bs_start = 0  # start of bitstream
-	cclk_pos = (0, 0)
-	last_pos2val = {}
+	tick = 0            # write clock
+	bs_start = 0        # start of bitstream
+	cclk_pos = (0, 0)   # position of cclk, used for writing nop
+	last_pos2val = {}   # record the infomation of last content
 
 	# signal dictionary
 	cmd2spio = {}
@@ -172,14 +190,16 @@ class PatternGen(object):
 
 	sig2pio = {}
 	sig2pos = {}
+	sym2sig = {}
 	entri_dict = {}
 
 	def __init__(self, path, tfo_file, command='-normal'):
 		self.project_name = path
 		self.path = os.path.join(DIRECTORY, path)
-		self.command = command.split('-')           # Get command: -normal, -legacy, ...
-		self.tfo_parser(tfo_file)                   # Get position of user files.
-		self.atf_parser(self.file_list['ATF'])      # Get position of include files.
+		# self.command = command.split('-')          # Get command: -normal, -legacy, ...
+		self.config['command'] = command.split('-')  # Get command: -normal, -legacy, ...
+		self.tfo_parser(tfo_file)                    # Get position of user files.
+		self.atf_parser(self.file_list['ATF'])       # Get position of include files.
 
 		# initialize bitstream info
 		self.cmd2spio, whatever = self.pio_parser(self.include_path, self.file_list['SPIO'])
@@ -195,8 +215,10 @@ class PatternGen(object):
 		sig2channel = self.lbf_parser(self.file_list['LBF'], sig2pin)
 		self.sig2pos = self.tcf_parser(self.file_list['TCF'], sig2channel)
 
-		# ONLY FOR TEST
-		# print('\n'.join(['%s = %s' % item for item in self.__dict__.items()]))
+		# get symbol2signal dictionary from vcd/txt file
+		self.sym2sig = self.get_sym2sig()
+		# print('\n'.join(['%s = %s' % item for item in self.__dict__.items()]))  # ONLY FOR TEST
+		pass
 
 	def tfo_parser(self, file):
 		"""
@@ -210,6 +232,7 @@ class PatternGen(object):
 		name_check(file, soup.TFO['name'])
 		self.file_list['LBF'] = soup.TFO.LBF['type'] + '.lbf'
 		test_tag = soup.find('TEST')
+		self.project_name = test_tag['name']
 		self.file_list['PTN'] = test_tag['name'] + '.ptn'
 		# self.path = test_tag['path']
 		for child in test_tag.children:
@@ -235,8 +258,10 @@ class PatternGen(object):
 					pio_dict[m.group(1)] = io
 					if io == 'inout':
 						tri = regex2.match(m.group(3)).group(1)
-						# print(1, tri)
-						entri_dict[tri] = m.group(1)
+						if tri not in entri_dict:
+							entri_dict[tri] = [m.group(1)]
+						else:
+							entri_dict[tri].append(m.group(1))
 		# print(pio_dict, entri_dict)
 		return pio_dict, entri_dict
 
@@ -251,10 +276,6 @@ class PatternGen(object):
 				if m:
 					sig2pin[m.group(1)] = m.group(2).strip()
 		return sig2pin
-
-	@staticmethod
-	def txt_ucf_parser(path, file):
-		return ()
 
 	def atf_parser(self, file):
 		# print(self.path)
@@ -285,9 +306,11 @@ class PatternGen(object):
 		for key, value in sig2channel.items():
 			# FRAME & ASSEMBLY tag
 			connect_tag = soup.find(pogo=value[:3])
-			assembly_name = connect_tag['assembly']  # should search by 'AS0101',
+			assembly_name = connect_tag['assembly']                           # should search by 'AS0101',
 			wire_tag = soup.find(code=assembly_name).find(pogopin=value[3:])  # not this
 			channel = connect_tag['plug'] + wire_tag['plugpin']
+
+			self.config['sr'] = int(soup.find('CARD').get('samplerate') or DEFAULT_SR)  # Get sample rate, default is 1
 
 			# SIGMAP tag
 			mapping_tag = soup.find(channel=channel)
@@ -297,106 +320,76 @@ class PatternGen(object):
 		return sig2pos
 
 	def txt_parser(self, fw):
-		# print("enter func")
-		tb_counter = 0       # length of test bench in operation code
-		def_state = True     # definition state
+		tb_counter = -1      # length of test bench in operation code
+		# def_state = True   # definition state
 		x_val = 1            # default value of x
-		sym2sig = {}         # {symbolic_in_vcd: signal_name}
 		pos2val = {}         # {position(bit): signal(1|0|z|x)}
 		path = os.path.join(self.path, self.file_list['TXT'])
-		# write_path = os.path.join(self.path, self.file_list['PTN'])
 		# regex1 = re.compile(r'(.)\s+(.*)\s+(input|output)', re.I)  # match signal name
-		regex1 = re.compile(r'(.)\s+(\w+)\s*(\[(\d+)(:?)(\d*)\])?\s+(input|output)', re.I)  # match signal name
+		# regex1 = re.compile(r'(.)\s+(\w+)\s*(\[(\d+)(:?)(\d*)\])?\s+(input|output)', re.I)  # match signal name
 		regex2 = re.compile(r'^\*{10}')                    # match period partition
 		regex3 = re.compile(r'(.)\s+b([0|1|x|z]+)')        # match test bench
 
-		# if not os.path.exists(write_path):
-		# 	os.mkdir(write_path)
 		with open(path, "r") as f:
 			if not self.entri_dict:
 				write_mask(fw, self.sig2pos, self.sig2pio)
 				write_operator(fw, TESTBENCH_OP, 0)
-				line = 1
+			line = 1
 			while line:
 				line = f.readline()
-				# print(line)
-				# definition stage, return sym2sig = {symbol:signal, ...}
-				if def_state:
-					m1 = regex1.match(line)
-					if m1:
-						if m1.group(5):  # Combined bus
-							MSB = int(m1.group(4))
-							LSB = int(m1.group(6))
-							# if MSB < LSB:
-							# 	MSB, LSB = (LSB, MSB)
-							sym2sig[m1.group(1)] = (m1.group(2), MSB, LSB)  # symbol => (bus, MSB, LSB)
-						elif m1.group(3):
-							sym2sig[m1.group(1)] = m1.group(2) + m1.group(3)
-						else:
-							sym2sig[m1.group(1)] = m1.group(2)
-					else:
-						if regex2.match(line):
-							f.readline()  # skip the 2nd star row
-							def_state = False
-				else:
-					# match next tick; write last tick to file
-					m2 = regex2.match(line)
-					# print(m2)
+				# match next tick; write last tick to file
+				m2 = regex2.match(line)
+				if m2 and regex2.match(f.readline()):  # skip 2nd star row # WARNING
+					# print('write')
 					# print(pos2val)
-					if m2 and regex2.match(f.readline()):  # skip 2nd star row # WARNING
-						# print('write')
-						write_content(fw, pos2val)  # Write testbench to binary file.
-						tb_counter += 1
+					write_content(fw, pos2val)  # Write testbench to binary file. Skip the first * line.
+					tb_counter += 1
 
-					# match testbench
-					m3 = regex3.match(line)
-					if m3:
-						key = m3.group(1)
-						if key not in sym2sig:
-							continue
-						value = m3.group(2)
-						if isinstance(sym2sig[key], tuple):
-							bus_ele = sym2sig[key]
-							bus_width = bus_ele[1] - bus_ele[2]
-							bus_signal = bus_width > 0 and 1 or -1
-							value = '0' * (abs(bus_width) - len(value)) + value  # Fill 0 on the left
-							for i in range(0, bus_width + bus_signal, bus_signal):
-								bus_sig = '{}[{}]'.format(bus_ele[0], str(bus_ele[1]-i))
-								pos2val[self.sig2pos.setdefault(bus_sig, None)] = value[abs(i)]
-								print('signal = %s, value = %s' % (bus_sig, value[abs(i)]))
-						else:
-							if value == 'x':
-								value = x_val
-							pos2val[self.sig2pos.setdefault(sym2sig[key], None)] = value
-						if sym2sig[key] in self.entri_dict:
-							entri = sym2sig[key]
-							if pos2val[self.sig2pos[entri]] == '1':
-								self.sig2pio[self.entri_dict[entri]] = 'output'
+				# match testbench
+				m3 = regex3.match(line)
+				if m3:
+					key = m3.group(1)
+					if key not in self.sym2sig:
+						continue
+					value = m3.group(2)
+					if isinstance(self.sym2sig[key], tuple):
+						bus_ele = self.sym2sig[key]
+						bus_width = bus_ele[1] - bus_ele[2]
+						bus_signal = bus_width > 0 and 1 or -1
+						value = '0' * (abs(bus_width) - len(value)) + value  # Fill 0 on the left
+						for i in range(0, bus_width + bus_signal, bus_signal):
+							bus_sig = '{}[{}]'.format(bus_ele[0], str(bus_ele[1] - i))
+							pos2val[self.sig2pos.setdefault(bus_sig, None)] = value[abs(i)]
+						# print('signal = %s, value = %s' % (bus_sig, value[abs(i)]))
+					else:
+						if value == 'x':
+							value = x_val
+						pos2val[self.sig2pos.setdefault(self.sym2sig[key], None)] = value
+					if self.sym2sig[key] in self.entri_dict:
+						entri_list = self.entri_dict[self.sym2sig[key]]
+						for entri in entri_list:
+							if value == '1':
+								self.sig2pio[entri] = 'output'
 							else:
-								self.sig2pio[self.entri_dict[entri]] = 'input'
-							write_length(fw, tb_counter)
-							write_mask(fw, self.sig2pos, self.sig2pio)
-							write_operator(fw, TESTBENCH_OP, 0)
-							tb_counter = 0
-				# line = f.readline()
+								self.sig2pio[entri] = 'input'
+						write_length(fw, tb_counter)
+						write_mask(fw, self.sig2pos, self.sig2pio)
+						write_operator(fw, TESTBENCH_OP, 0)
+						tb_counter = 0
 			write_content(fw, pos2val)
 			tb_counter += 1
+			# print(tb_counter)
 			write_length(fw, tb_counter)
 
 	def vcd_parser(self, fw):
 		tick = -1         # current tick
 		tb_counter = -1   # length of testbench in operation code
-		def_state = True  # definition state
-		sym2sig = {}      # {symbolic_in_vcd: signal_name}
+		x_val = 1         # default value of x
 		pos2val = {}      # {position(bit): signal(1|0|z|x)}
 		path = os.path.join(self.path, self.file_list['VCD'])
-		write_path = os.path.join(self.path, self.file_list['PTN'])
-		regex1 = re.compile(r'\$var .+ \d+ (.) (.+) \$end', re.I)  # match signal name
 		regex2 = re.compile(r'#(\d+)')                             # match period
 		regex3 = re.compile(r'([0|1|x|z])(.)')                     # match testbench
 
-		if not os.path.exists(write_path):
-			os.mknod(write_path)
 		with open(path, "r") as f:
 			if not self.entri_dict:
 				write_mask(fw, self.sig2pos, self.sig2pio)
@@ -405,45 +398,50 @@ class PatternGen(object):
 				# end of file
 				if line == '$dumpoff':
 					break
-
-				# definition stage, return sym2sig = {symbol:signal, ...}
-				if def_state:
-					m1 = regex1.match(line)
-					if m1:
-						sym2sig[m1.group(1)] = m1.group(2)
-					else:
-						if re.match(r'\$upscope', line):
-							def_state = False
-					continue
-				else:
 					# match next tick; write last tick to file
-					m2 = regex2.match(line)
-					if m2:
-						vcd_tick = m2.group(1)
-						while True:
-							write_content(fw, pos2val)  # Write testbench to binary file.
-							tb_counter += 1
-							tick += 1
-							if tick == int(vcd_tick):
-								break
-						continue
+				m2 = regex2.match(line)
+				if m2:
+					vcd_tick = m2.group(1)
+					while True:
+						write_content(fw, pos2val)  # Write testbench to binary file.
+						tb_counter += 1
+						tick += 1
+						if tick == int(vcd_tick):
+							break
+					continue
 
-					# match testbench
-					m3 = regex3.match(line)
-					if m3:
-						value = m3.group(1)
-						key = m3.group(2)
-						pos2val[self.sig2pos.setdefault(sym2sig[key], None)] = value
-						if sym2sig[key] in self.entri_dict:
-							entri = sym2sig[key]
-							if pos2val[self.sig2pos[entri]] == '1':
-								self.sig2pio[self.entri_dict[entri]] = 'output'
+				# match testbench
+				m3 = regex3.match(line)
+				if m3:
+					value = m3.group(1)
+					key = m3.group(2)
+					if key not in self.sym2sig:
+						continue
+					# pos2val[self.sig2pos.setdefault(self.sym2sig[key], None)] = value
+					if isinstance(self.sym2sig[key], tuple):
+						bus_ele = self.sym2sig[key]
+						bus_width = bus_ele[1] - bus_ele[2]
+						bus_signal = bus_width > 0 and 1 or -1
+						value = '0' * (abs(bus_width) - len(value)) + value  # Fill 0 on the left
+						for i in range(0, bus_width + bus_signal, bus_signal):
+							bus_sig = '{}[{}]'.format(bus_ele[0], str(bus_ele[1] - i))
+							pos2val[self.sig2pos.setdefault(bus_sig, None)] = value[abs(i)]
+						# print('signal = %s, value = %s' % (bus_sig, value[abs(i)]))
+					else:
+						if value == 'x':
+							value = x_val
+						pos2val[self.sig2pos.setdefault(self.sym2sig[key], None)] = value
+					if self.sym2sig[key] in self.entri_dict:
+						entri_list = self.entri_dict[self.sym2sig[key]]
+						for entri in entri_list:
+							if value == '1':
+								self.sig2pio[entri] = 'output'
 							else:
-								self.sig2pio[self.entri_dict[entri]] = 'input'
-							write_length(fw, tb_counter)
-							write_mask(fw, self.sig2pos, self.sig2pio)
-							write_operator(fw, TESTBENCH_OP, 0)
-							tb_counter = 0
+								self.sig2pio[entri] = 'input'
+						write_length(fw, tb_counter)
+						write_mask(fw, self.sig2pos, self.sig2pio)
+						write_operator(fw, TESTBENCH_OP, 0)
+						tb_counter = 0
 			write_length(fw, tb_counter)
 
 	def sbc_parser(self, file):
@@ -503,23 +501,138 @@ class PatternGen(object):
 					break
 				yield line
 
+	def get_sym2sig(self):
+		sym2sig = {}
+		if 'legacy' in self.config['command']:
+			path = os.path.join(self.path, self.file_list['TXT'])
+			regex1 = re.compile(r'(.)\s+(\w+)\s*(\[(\d+)(:?)(\d*)\])?\s+(input|output)', re.I)
+			regex2 = re.compile(r'^\*{10}')
+		else:
+			path = os.path.join(self.path, self.file_list['VCD'])
+			regex1 = re.compile(r'\$var\s+\w+\s+\d+\s+(.)\s+(\w+)\s*(\[(\d+)(:?)(\d*)\])?\s+\$end', re.I)
+			regex2 = re.compile(r'\$enddefinitions \$end')
+		with open(path, "r") as f:
+			line = f.readline()
+			while line:
+				m = regex1.match(line)
+				if m:
+					if m.group(5):  # Combined bus
+						msb = int(m.group(4))
+						lsb = int(m.group(6))
+						sym2sig[m.group(1)] = (m.group(2), msb, lsb)  # symbol => (bus, MSB, LSB)
+					elif m.group(3):
+						sym2sig[m.group(1)] = m.group(2) + m.group(3)
+					else:
+						sym2sig[m.group(1)] = m.group(2)
+				elif regex2.match(line):
+						break
+				line = f.readline()
+		return sym2sig
+
 	def edge_check(self, fw):
 		if self.last_pos2val[self.cclk_pos] == 0:
 			self.last_pos2val[self.cclk_pos] = 1
 			write_content(fw, self.last_pos2val)
 			self.tick += 1
 
+	def get_bus_val(self, line_tuple, bus):
+		bus_width = bus[1] - bus[2]
+		bus_signal = bus_width > 0 and 1 or -1
+		val = 'b'
+		for i in range(0, bus_width + bus_signal, bus_signal):
+			bus_sig = '{}[{}]'.format(bus[0], str(bus[1] - i))
+			bus_pos = self.sig2pos[bus_sig]
+			bus_val = (line_tuple[bus_pos[0] - 1] >> bus_pos[1]) & 1
+			val = val + str(bus_val)
+		return val + ' '
+
 	def trf2vcd(self, trf, vcd):
+		tick = 0
+		sym2val = {}
 		path_trf = os.path.join(self.path, trf)
 		path_vcd = os.path.join(self.path, vcd)
-		with open(path_trf, 'rb') as ft, open(path_vcd, 'wb') as fv:
-			pass
+		pos2sig = {v: k for k, v in self.sig2pos.items()}
+		sig2sym = {v: k for k, v in self.sym2sig.items()}
+		title = {
+			'date': time.asctime(time.localtime(time.time())),
+			'version': 'ModelSim Version 10.1c',
+			'timescale': '1us'
+		}
+		with open(path_trf, 'rb') as ft, open(path_vcd, 'w') as fv:
+			for item in title:
+				fv.write('${}\n\t{}\n$end\n'.format(item, title[item]))
+			fv.write('$scope module {}_tb $end\n'.format(self.project_name))
+			# Signal definition. Copy the original vcd file.
+			for symbol, signal in self.sym2sig.items():
+				if isinstance(signal, tuple):
+					io = self.sig2pio['{}[{}]'.format(signal[0], signal[1])] == 'input' and 'reg' or 'wire'
+					signal, width = '{}[{}:{}]'.format(signal[0], signal[1], signal[2]), abs(signal[1] - signal[2] + 1)
+				else:
+					width = 1
+					io = self.sig2pio[signal] == 'input' and 'reg' or 'wire'
+				fv.write('$var {} {} {} {} $end\n'.format(io, width, symbol, signal))
+			fv.write('$upscope $end\n$enddefinitions $end\n')
+			line = ft.read(BIN_BYTE_WIDTH)  # Bytes type
+			last_line = None
+			while line:
+				sym2val = {}
+				line_tuple = struct.unpack('>' + 'B' * 16, line)
+				# print(line_tuple)
+				if not last_line:
+					fv.write('#{}\n$dumpvars\n'.format(tick))
+					# for sig in self.sig2pos:
+					# 	pos = self.sig2pos.get(sig)
+					# 	if pos:
+					# 		val = (line_tuple[pos[0]-1] >> pos[1]) & 1
+					# 	if sig2sym.get(sig):
+					# 		sym2val[sym] = val
+					for sym, sig in self.sym2sig.items():
+						if isinstance(sig, tuple):
+							# bus_width = sig[1] - sig[2]
+							# bus_signal = bus_width > 0 and 1 or -1
+							# val = 'b'
+							# for i in range(0, bus_width + bus_signal, bus_signal):
+							# 	bus_sig = '{}[{}]'.format(sig[0], str(sig[1]-i))
+							# 	bus_pos = self.sig2pos[bus_sig]
+							# 	bus_val = (line_tuple[bus_pos[0]-1] >> bus_pos[1]) & 1
+							# 	val = val + str(bus_val)
+							# sym2val[sym] = val+' '
+							sym2val[sym] = self.get_bus_val(line_tuple, sig)
+						else:
+							pos = self.sig2pos.get(sig)
+							if pos:
+								sym2val[sym] = (line_tuple[pos[0]-1] >> pos[1]) & 1
+					for sym, val in sym2val.items():  # Write all symbol + value together.
+						fv.write('{}{}\n'.format(val, sym))
+					fv.write('$end\n')
+				elif line != last_line:
+					fv.write('#{}\n'.format(tick))
+					last_line_tuple = struct.unpack('>'+'B'*16, last_line)
+					diff = map(find_diff, line_tuple, last_line_tuple)  # Return a list of dictionary.
+					# print(diff)
+					for i, byte_dict in enumerate(diff):
+						for bit, val in byte_dict.items():
+							pos = (i+1, bit)
+							sig = pos2sig.setdefault(pos, 0)  # Signal name, string.
+							if sig in sig2sym:  # Normal signal or distributed bus signal.
+								sym2val[sig2sym[sig]] = val
+							else:               # Concentrated bus signal
+								for key in sig2sym:
+									if re.sub(r'\[\d+\]', '', sig) in key:
+										sym2val[sig2sym[key]] = self.get_bus_val(line_tuple, key)
+										# print(sig2sym[key], sym2val[sig2sym[key]])
+										break
+					for sym, val in sym2val.items():
+						fv.write('{}{}\n'.format(val, sym))
+				last_line = line
+				line = ft.read(BIN_BYTE_WIDTH)
+				tick += 1
 
 	def write_attr(self):
 		write_path = os.path.join(self.path, self.project_name)
 		with open(write_path, 'w') as fw:
 			fw.write('\n'.join(['%s = %s' % item for item in self.__dict__.items()]))
-			fw.write()
+			fw.write('')
 
 	def write_command(self, fw):
 		pos2val = {}
@@ -581,9 +694,9 @@ class PatternGen(object):
 		write_length(fw, self.tick)
 
 	def write_testbench(self, fw):
-		if 'normal' in self.command:
+		if 'normal' in self.config['command']:
 			self.vcd_parser(fw)
-		elif 'legacy' in self.command:
+		elif 'legacy' in self.config['command']:
 			self.txt_parser(fw)
 
 	def write(self):
@@ -610,12 +723,12 @@ class PatternGen(object):
 
 @timer
 def test():
-	# pattern = PatternGen('pin_test', 'tfo_demo.tfo')
+	# pattern = PatternGen(path='pin_test', tfo_file='tfo_demo.tfo')
 	# pattern = PatternGen('CLK', 'tfo_demo.tfo', '-legacy')  # Test txt(vcd) format.
-	# pattern = PatternGen('LX200', 'mul1.tfo', '-legacy')  # Test bus.
-	pattern = PatternGen('stage1_horizontal_double_0', 'tfo_demo.tfo', '-legacy')  # Test bus.
+	pattern = PatternGen('LX200', 'mul1.tfo', '-legacy')  # Test bus.
+	# pattern = PatternGen('stage1_horizontal_double_0', 'tfo_demo.tfo', '-legacy')  # Test bus.
+	# pattern = PatternGen('test_tri', 'tfo_demo.tfo')  # Test trigate bus.
 
-	pattern.write()
 	# print('path = ' + pattern.path)
 	# print('include path = ' + pattern.include_path)
 	# print('file list = ' + str(pattern.file_list))
@@ -628,10 +741,13 @@ def test():
 	# print('sig2pio = ' + str(pattern.sig2pio))
 	# print('entri_dict = ' + str(pattern.entri_dict))
 	# print('sig2pos = ' + str(pattern.sig2pos))
-
 	print(pattern.__dict__.keys())
 	print(pattern.file_list)
 	print('\n'.join(['%s = %s' % item for item in pattern.__dict__.items()]))
+
+	pattern.write()
+	# print(pattern.sym2sig)
+	pattern.trf2vcd('test_result.trf', 'test_result.vcd')
 
 
 if __name__ == "__main__":
