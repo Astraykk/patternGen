@@ -180,6 +180,7 @@ class PatternGen(object):
 	bs_start = 0        # start of bitstream
 	cclk_pos = (0, 0)   # position of cclk, used for writing nop
 	last_pos2val = {}   # record the infomation of last content
+	trf_param = {}
 
 	# signal dictionary
 	cmd2spio = {}
@@ -558,6 +559,13 @@ class PatternGen(object):
 			'version': 'ModelSim Version 10.1c',
 			'timescale': '1us'
 		}
+		# Prepare param for trf abandon
+		vcd_len = self.trf_param['vcd_len']
+		x1 = 2048 - (self.trf_param['bs_len'] + 3) % 2048 - 3
+		if vcd_len <= 2048:
+			end_tick = vcd_len - 1
+		else:
+			end_tick = 2047+ vcd_len - x1
 		with open(path_trf, 'rb') as ft, open(path_vcd, 'w') as fv:
 			for item in title:
 				fv.write('${}\n\t{}\n$end\n'.format(item, title[item]))
@@ -575,6 +583,11 @@ class PatternGen(object):
 			line = ft.read(BIN_BYTE_WIDTH)  # Bytes type
 			last_line = None
 			while line:
+				# tick check
+				if tick > end_tick:
+					break
+				elif tick == 0 or tick == 1 or tick:
+					pass
 				sym2val = {}
 				line_tuple = struct.unpack('>' + 'B' * 16, line)
 				# print(line_tuple)
@@ -692,6 +705,7 @@ class PatternGen(object):
 				fw.write(line)
 				self.tick += 1
 		write_length(fw, self.tick)
+		self.trf_param['bs_len'] = self.tick
 
 	def write_testbench(self, fw):
 		if 'normal' in self.config['command']:
@@ -723,9 +737,9 @@ class PatternGen(object):
 
 @timer
 def test():
-	# pattern = PatternGen(path='pin_test', tfo_file='tfo_demo.tfo')
+	pattern = PatternGen(path='pin_test', tfo_file='tfo_demo.tfo')
 	# pattern = PatternGen('CLK', 'tfo_demo.tfo', '-legacy')  # Test txt(vcd) format.
-	pattern = PatternGen('LX200', 'mul1.tfo', '-legacy')  # Test bus.
+	# pattern = PatternGen('LX200', 'mul1.tfo', '-legacy')  # Test bus.
 	# pattern = PatternGen('stage1_horizontal_double_0', 'tfo_demo.tfo', '-legacy')  # Test bus.
 	# pattern = PatternGen('test_tri', 'tfo_demo.tfo')  # Test trigate bus.
 
@@ -747,7 +761,8 @@ def test():
 
 	pattern.write()
 	# print(pattern.sym2sig)
-	pattern.trf2vcd('test_result.trf', 'test_result.vcd')
+	# pattern.trf2vcd('test_result.trf', 'test_result.vcd')
+
 
 
 if __name__ == "__main__":
