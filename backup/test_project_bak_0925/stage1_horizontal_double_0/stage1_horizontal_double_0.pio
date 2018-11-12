@@ -1,0 +1,6 @@
+NET "a[0]" DIR = input;
+NET "a[1]" DIR = input;
+NET "a[2]" DIR = input;
+NET "s[0]" DIR = output;
+NET "s[1]" DIR = output;
+NET "s[2]" DIR = output;

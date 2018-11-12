@@ -1,0 +1,8 @@
+## begin: Stage1_Horizontal_Double_0 ##
+
+NET "a[0]" LOC = AB11;
+NET "a[1]" LOC = AB10;
+NET "a[2]" LOC = AD2;
+NET "s[0]" LOC = F28;
+NET "s[1]" LOC = B26;
+NET "s[2]" LOC = A26;

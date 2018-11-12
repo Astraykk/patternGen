@@ -1,0 +1,21 @@
+## begin: mul1 ##
+inputs["ai[0]"] = D29
+inputs["ai[1]"] = E29
+inputs["ai[2]"] = B26
+inputs["ai[3]"] = A26
+inputs["bi[0]"] = L24
+inputs["bi[1]"] = C23
+inputs["bi[2]"] = K23
+inputs["bi[3]"] = B23
+inputs["clk"] = D22
+inputs["ce"] = A24
+inputs["sr"] = A23
+outputs["ao[0]"] = AD2
+outputs["ao[1]"] = AL9
+outputs["ao[2]"] = AD1
+outputs["ao[3]"] = AK9
+outputs["bo[0]"] = AG2
+outputs["bo[1]"] = AR9
+outputs["bo[2]"] = AG1
+outputs["bo[3]"] = AP9
+## end ##

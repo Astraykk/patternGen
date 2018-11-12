@@ -1,0 +1,19 @@
+<TFO name = "tfo_demo" path = "E:/pin_test/" comment = "1" author = "xy" date = "2018/04/08">
+	<LBF type = "LB0101">
+	<LIST>
+		<DUT name = "1" type = "LX200">
+		<TEST name = "lx200_clk0" path = ".">
+			<DWM name = "SelectMAP32"/>
+			<ITM name = "lx200_clk0"/>
+			<PIO name = "lx200_clk0"/>
+			<BIT name = "lx200_clk0"/>
+			<VCD name = "lx200_clk0"/>
+			<UCF name = "lx200_clk0"/>
+			<TXT name = "lx200_clk0"/>
+			<ATF name = "lx200_clk0"/>
+			<RPT name = "lx200_clk0"/>
+			<WAV name = "lx200_clk0" type = "" compare = "yes"/>
+		</TEST>
+	</LIST>
+</TFO>
+			

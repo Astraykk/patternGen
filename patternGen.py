@@ -2,11 +2,12 @@
 import re, sys, os, struct
 import bs4
 import time
+
 # import timeit
 
-DIRECTORY = sys.path[0]   # /path/to/mysite/
+DIRECTORY = sys.path[0]  # /path/to/mysite/
 # DIRECTORY = os.path.join(site.storage.location, "uploads")   # /path/to/mysite/
-PROJECT_PATH = ''         # /mysite/uploads/project/
+PROJECT_PATH = ''  # /mysite/uploads/project/
 INCLUDE_PATH = 'include'  # /mysite/tools/include/
 
 # define operation code here
@@ -32,7 +33,8 @@ def timer(func):
 		start_time = time.time()
 		func()
 		end_time = time.time()
-		print("\nTotal time: " + str(end_time-start_time))
+		print("\nTotal time: " + str(end_time - start_time))
+
 	return _timer
 
 
@@ -80,33 +82,33 @@ def write_content(fw, pos_dict):
 	numbers = [0] * 16
 	for key, value in pos_dict.items():
 		if key:
-			numbers[key[0]-1] += 2 ** key[1] * int(value)
-			# numbers[key[0]-1] += int(value) << key[1]  # shift operation is faster?
+			numbers[key[0] - 1] += 2 ** key[1] * int(value)
+		# numbers[key[0]-1] += int(value) << key[1]  # shift operation is faster?
 	for num in numbers:
 		fw.write(struct.pack('B', num))
 
 
 def write_operator(fw, operator, length):
 	fw.write(struct.pack('B', operator))  # 1 byte
-	for i in range(11):                   # length takes 4 bytes
+	for i in range(11):  # length takes 4 bytes
 		fw.write(struct.pack('B', 0xff))
-	fw.write(struct.pack('>I', length))    # 4 bytes, big-endian
+	fw.write(struct.pack('>I', length))  # 4 bytes, big-endian
 
 
 def write_tb_op(fw, tb_counter):
 	if tb_counter:
 		offset = - int((tb_counter + 1) * BIN_BYTE_WIDTH)
-		fw.seek(offset, 1)    # locate the beginning of testbench
+		fw.seek(offset, 1)  # locate the beginning of testbench
 		write_operator(fw, TESTBENCH_OP, tb_counter)
-		fw.seek(0, 2)         # return to end of file
+		fw.seek(0, 2)  # return to end of file
 
 
 def write_length(fw, length):
 	if length:
 		offset = - int(length * BIN_BYTE_WIDTH + 4)
-		fw.seek(offset, 1)    # locate the beginning of testbench
+		fw.seek(offset, 1)  # locate the beginning of testbench
 		fw.write(struct.pack('>I', length))
-		fw.seek(0, 2)         # return to end of file
+		fw.seek(0, 2)  # return to end of file
 
 
 def write_mask(fw, sig2pos, sig2pio):  # static
@@ -166,6 +168,31 @@ def get_symbol(signal, sig2sym):
 		return None
 
 
+def tfo_parser(path, file):
+	"""
+	TODO: Multiple TEST tag, different attr 'name' and 'path'.
+	TODO: Return file_dict like {test1:{path:'path', file1:'file1', ...}, test2:{...}, ...}.
+	Format: {"lbf":"LB010tf1", dut:"LX200", "test":{"pin_test":{"path":".", }}}
+	:param file:
+	:return file_dict:
+	"""
+	file_list = {}
+	soup = get_soup(path, file)
+	name_check(file, soup.TFO['name'])
+	file_list['LBF'] = soup.TFO.LBF['type'] + '.lbf'
+	test_tag = soup.find('TEST')
+	project_name = test_tag['name']
+	file_list['PTN'] = test_tag['name'] + '.ptn'
+	# self.path = test_tag['path']
+	for child in test_tag.children:
+		if type(child) == bs4.element.Tag:
+			if child.name == 'DWM' or child.name == 'BIT':
+				file_list[child.name] = child['name']
+			else:
+				file_list[child.name] = child['name'] + '.' + child.name.lower()
+	return project_name, file_list
+
+
 class PatternGen(object):
 	# path and file
 	project_name = ''
@@ -199,8 +226,8 @@ class PatternGen(object):
 		self.path = os.path.join(DIRECTORY, path)
 		# self.command = command.split('-')          # Get command: -normal, -legacy, ...
 		self.config['command'] = command.split('-')  # Get command: -normal, -legacy, ...
-		self.tfo_parser(tfo_file)                    # Get position of user files.
-		self.atf_parser(self.file_list['ATF'])       # Get position of include files.
+		self.tfo_parser(tfo_file)  # Get position of user files.
+		self.atf_parser(self.file_list['ATF'])  # Get position of include files.
 
 		# initialize bitstream info
 		self.cmd2spio, whatever = self.pio_parser(self.include_path, self.file_list['SPIO'])
@@ -307,7 +334,7 @@ class PatternGen(object):
 		for key, value in sig2channel.items():
 			# FRAME & ASSEMBLY tag
 			connect_tag = soup.find(pogo=value[:3])
-			assembly_name = connect_tag['assembly']                           # should search by 'AS0101',
+			assembly_name = connect_tag['assembly']  # should search by 'AS0101',
 			wire_tag = soup.find(code=assembly_name).find(pogopin=value[3:])  # not this
 			channel = connect_tag['plug'] + wire_tag['plugpin']
 
@@ -321,15 +348,15 @@ class PatternGen(object):
 		return sig2pos
 
 	def txt_parser(self, fw):
-		tb_counter = -1      # length of test bench in operation code
+		tb_counter = -1  # length of test bench in operation code
 		# def_state = True   # definition state
-		x_val = 1            # default value of x
-		pos2val = {}         # {position(bit): signal(1|0|z|x)}
+		x_val = 1  # default value of x
+		pos2val = {}  # {position(bit): signal(1|0|z|x)}
 		path = os.path.join(self.path, self.file_list['TXT'])
 		# regex1 = re.compile(r'(.)\s+(.*)\s+(input|output)', re.I)  # match signal name
 		# regex1 = re.compile(r'(.)\s+(\w+)\s*(\[(\d+)(:?)(\d*)\])?\s+(input|output)', re.I)  # match signal name
-		regex2 = re.compile(r'^\*{10}')                    # match period partition
-		regex3 = re.compile(r'(.)\s+b([0|1|x|z]+)')        # match test bench
+		regex2 = re.compile(r'^\*{10}')  # match period partition
+		regex3 = re.compile(r'(.)\s+b([0|1|x|z]+)')  # match test bench
 
 		with open(path, "r") as f:
 			if not self.entri_dict:
@@ -361,7 +388,7 @@ class PatternGen(object):
 						for i in range(0, bus_width + bus_signal, bus_signal):
 							bus_sig = '{}[{}]'.format(bus_ele[0], str(bus_ele[1] - i))
 							pos2val[self.sig2pos.setdefault(bus_sig, None)] = value[abs(i)]
-						# print('signal = %s, value = %s' % (bus_sig, value[abs(i)]))
+					# print('signal = %s, value = %s' % (bus_sig, value[abs(i)]))
 					else:
 						if value == 'x':
 							value = x_val
@@ -383,13 +410,13 @@ class PatternGen(object):
 			write_length(fw, tb_counter)
 
 	def vcd_parser(self, fw):
-		tick = -1         # current tick
-		tb_counter = -1   # length of testbench in operation code
-		x_val = 1         # default value of x
-		pos2val = {}      # {position(bit): signal(1|0|z|x)}
+		tick = -1  # current tick
+		tb_counter = -1  # length of testbench in operation code
+		x_val = 1  # default value of x
+		pos2val = {}  # {position(bit): signal(1|0|z|x)}
 		path = os.path.join(self.path, self.file_list['VCD'])
-		regex2 = re.compile(r'#(\d+)')                             # match period
-		regex3 = re.compile(r'([0|1|x|z])(.)')                     # match testbench
+		regex2 = re.compile(r'#(\d+)')  # match period
+		regex3 = re.compile(r'([0|1|x|z])(.)')  # match testbench
 
 		with open(path, "r") as f:
 			if not self.entri_dict:
@@ -399,7 +426,7 @@ class PatternGen(object):
 				# end of file
 				if line == '$dumpoff':
 					break
-					# match next tick; write last tick to file
+				# match next tick; write last tick to file
 				m2 = regex2.match(line)
 				if m2:
 					vcd_tick = m2.group(1)
@@ -427,7 +454,7 @@ class PatternGen(object):
 						for i in range(0, bus_width + bus_signal, bus_signal):
 							bus_sig = '{}[{}]'.format(bus_ele[0], str(bus_ele[1] - i))
 							pos2val[self.sig2pos.setdefault(bus_sig, None)] = value[abs(i)]
-						# print('signal = %s, value = %s' % (bus_sig, value[abs(i)]))
+					# print('signal = %s, value = %s' % (bus_sig, value[abs(i)]))
 					else:
 						if value == 'x':
 							value = x_val
@@ -526,7 +553,7 @@ class PatternGen(object):
 					else:
 						sym2sig[m.group(1)] = m.group(2)
 				elif regex2.match(line):
-						break
+					break
 				line = f.readline()
 		return sym2sig
 
@@ -614,22 +641,22 @@ class PatternGen(object):
 						else:
 							pos = self.sig2pos.get(sig)
 							if pos:
-								sym2val[sym] = (line_tuple[pos[0]-1] >> pos[1]) & 1
+								sym2val[sym] = (line_tuple[pos[0] - 1] >> pos[1]) & 1
 					for sym, val in sym2val.items():  # Write all symbol + value together.
 						fv.write('{}{}\n'.format(val, sym))
 					fv.write('$end\n')
 				elif line != last_line:
 					fv.write('#{}\n'.format(tick))
-					last_line_tuple = struct.unpack('>'+'B'*16, last_line)
+					last_line_tuple = struct.unpack('>' + 'B' * 16, last_line)
 					diff = map(find_diff, line_tuple, last_line_tuple)  # Return a list of dictionary.
 					# print(diff)
 					for i, byte_dict in enumerate(diff):
 						for bit, val in byte_dict.items():
-							pos = (i+1, bit)
+							pos = (i + 1, bit)
 							sig = pos2sig.setdefault(pos, 0)  # Signal name, string.
 							if sig in sig2sym:  # Normal signal or distributed bus signal.
 								sym2val[sig2sym[sig]] = val
-							else:               # Concentrated bus signal
+							else:  # Concentrated bus signal
 								for key in sig2sym:
 									if re.sub(r'\[\d+\]', '', sig) in key:
 										sym2val[sig2sym[key]] = self.get_bus_val(line_tuple, key)
@@ -676,7 +703,8 @@ class PatternGen(object):
 			write_content(fw, pos2val)
 			self.tick += 2
 		self.last_pos2val = pos2val
-		# print(self.last_bs)
+
+	# print(self.last_bs)
 
 	def write_nop(self, fw):
 		start = self.nop['start']

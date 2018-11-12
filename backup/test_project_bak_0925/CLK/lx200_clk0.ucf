@@ -1,0 +1,3 @@
+NET "clk_in" LOC = AU2;
+NET "in" LOC = AJ10;
+NET "out" LOC = AU1;
