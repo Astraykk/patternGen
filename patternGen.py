@@ -1,11 +1,20 @@
 #!/usr/bin/python3
+"""
+Date:       11/13/2018
+Version:    2.1.0
+Author:     Kang Chuanliang
+Summary:
+	basic function: Write PTN; TRF to VCD,
+	advanced support: tri_gate; bus (two types); TRF pruning for CF format;
+		two stimulus format (vcd & txt);
+"""
 import re, sys, os, struct
 import bs4
 import time
 
 # import timeit
 
-DIRECTORY = sys.path[0]  # /path/to/mysite/
+DIRECTORY = sys.path[0]  # os.path.join(sys.path[0], 'uploads')
 # DIRECTORY = os.path.join(site.storage.location, "uploads")   # /path/to/mysite/
 PROJECT_PATH = ''  # /mysite/uploads/project/
 INCLUDE_PATH = 'include'  # /mysite/tools/include/
@@ -208,6 +217,7 @@ class PatternGen(object):
 	cclk_pos = (0, 0)   # position of cclk, used for writing nop
 	last_pos2val = {}   # record the infomation of last content
 	trf_param = {}
+	total_length = 0    # global counter of the pattern
 
 	# signal dictionary
 	cmd2spio = {}
@@ -362,6 +372,7 @@ class PatternGen(object):
 			if not self.entri_dict:
 				write_mask(fw, self.sig2pos, self.sig2pio)
 				write_operator(fw, TESTBENCH_OP, 0)
+				self.total_length += 3
 			line = 1
 			while line:
 				line = f.readline()
@@ -372,6 +383,7 @@ class PatternGen(object):
 					# print(pos2val)
 					write_content(fw, pos2val)  # Write testbench to binary file. Skip the first * line.
 					tb_counter += 1
+					self.total_length += 1
 
 				# match testbench
 				m3 = regex3.match(line)
@@ -403,9 +415,11 @@ class PatternGen(object):
 						write_length(fw, tb_counter)
 						write_mask(fw, self.sig2pos, self.sig2pio)
 						write_operator(fw, TESTBENCH_OP, 0)
+						self.total_length += 3
 						tb_counter = 0
 			write_content(fw, pos2val)
 			tb_counter += 1
+			self.total_length += 1
 			# print(tb_counter)
 			write_length(fw, tb_counter)
 
@@ -422,6 +436,7 @@ class PatternGen(object):
 			if not self.entri_dict:
 				write_mask(fw, self.sig2pos, self.sig2pio)
 				write_operator(fw, TESTBENCH_OP, 0)
+				self.total_length += 3
 			for line in f.readlines():
 				# end of file
 				if line == '$dumpoff':
@@ -434,6 +449,7 @@ class PatternGen(object):
 						write_content(fw, pos2val)  # Write testbench to binary file.
 						tb_counter += 1
 						tick += 1
+						self.total_length += 1
 						if tick == int(vcd_tick):
 							break
 					continue
@@ -469,6 +485,7 @@ class PatternGen(object):
 						write_length(fw, tb_counter)
 						write_mask(fw, self.sig2pos, self.sig2pio)
 						write_operator(fw, TESTBENCH_OP, 0)
+						self.total_length += 3
 						tb_counter = 0
 			write_length(fw, tb_counter)
 
@@ -562,6 +579,7 @@ class PatternGen(object):
 			self.last_pos2val[self.cclk_pos] = 1
 			write_content(fw, self.last_pos2val)
 			self.tick += 1
+			self.total_length += 1
 
 	def get_bus_val(self, line_tuple, bus):
 		bus_width = bus[1] - bus[2]
@@ -592,7 +610,7 @@ class PatternGen(object):
 		if vcd_len <= 2048:
 			end_tick = vcd_len - 1
 		else:
-			end_tick = 2047+ vcd_len - x1
+			end_tick = 2047 + vcd_len - x1
 		with open(path_trf, 'rb') as ft, open(path_vcd, 'w') as fv:
 			for item in title:
 				fv.write('${}\n\t{}\n$end\n'.format(item, title[item]))
@@ -668,6 +686,10 @@ class PatternGen(object):
 				line = ft.read(BIN_BYTE_WIDTH)
 				tick += 1
 
+	def completion(self, fw):
+		for i in range(2048 - self.total_length % 2048):
+			fw.write(struct.pack('dd', 0, 0))
+
 	def write_attr(self):
 		write_path = os.path.join(self.path, self.project_name)
 		with open(write_path, 'w') as fw:
@@ -702,6 +724,7 @@ class PatternGen(object):
 			pos2val[self.cclk_pos] = 1
 			write_content(fw, pos2val)
 			self.tick += 2
+			self.total_length += 2
 		self.last_pos2val = pos2val
 
 	# print(self.last_bs)
@@ -727,15 +750,18 @@ class PatternGen(object):
 					self.last_pos2val[cclk_pos] = 1
 				write_content(fw, self.last_pos2val)
 				self.tick += 1
+				self.total_length += 1
 		else:
 			start = int(start)
 			while self.tick <= start:
 				fw.write(line)
 				self.tick += 1
+				self.total_length += 1
 		write_length(fw, self.tick)
 		self.trf_param['bs_len'] = self.tick
 
 	def write_testbench(self, fw):
+		self.total_length -= 1  # the first line will add an extra 1
 		if 'normal' in self.config['command']:
 			self.vcd_parser(fw)
 		elif 'legacy' in self.config['command']:
@@ -746,17 +772,26 @@ class PatternGen(object):
 		with open(path, 'wb+') as fw:
 			write_mask(fw, self.cmd2pos, self.cmd2spio)
 			write_operator(fw, BITSTREAM_OP, 0)
+			self.total_length += 3
+			print('total length = ' + str(self.total_length))
 			while self.tick < self.bs_start:
 				# print(self.tick)
 				self.write_command(fw)
 				self.tick += 1
-
+				self.total_length += 1
+			print('total length = ' + str(self.total_length))
 			# Check clock edge.
 			self.edge_check(fw)
 			self.write_bitstream(fw)
+			print('total length = ' + str(self.total_length))
 			self.write_nop(fw)
+			print('total length = ' + str(self.total_length))
 			self.write_testbench(fw)
+			print('total length = ' + str(self.total_length))
 			write_operator(fw, END_OP, 0)
+			self.total_length += 1
+			print('total length = ' + str(self.total_length))
+			self.completion(fw)
 			print("Finished!")
 
 
@@ -790,7 +825,6 @@ def test():
 	pattern.write()
 	# print(pattern.sym2sig)
 	# pattern.trf2vcd('test_result.trf', 'test_result.vcd')
-
 
 
 if __name__ == "__main__":
