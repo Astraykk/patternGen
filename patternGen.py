@@ -11,6 +11,7 @@ Summary:
 import re, sys, os, struct
 import bs4
 import time
+# from filebrowser.sites import site
 
 # import timeit
 
@@ -216,7 +217,7 @@ class PatternGen(object):
 	bs_start = 0        # start of bitstream
 	cclk_pos = (0, 0)   # position of cclk, used for writing nop
 	last_pos2val = {}   # record the infomation of last content
-	trf_param = {}
+	trf_param = {'vcd_list': []}
 	total_length = 0    # global counter of the pattern
 
 	# signal dictionary
@@ -424,12 +425,12 @@ class PatternGen(object):
 			write_length(fw, tb_counter)
 
 	def vcd_parser(self, fw):
-		tick = -1  # current tick
-		tb_counter = -1  # length of testbench in operation code
-		x_val = 1  # default value of x
-		pos2val = {}  # {position(bit): signal(1|0|z|x)}
+		tick = -1          # current tick
+		tb_counter = -1    # length of testbench in operation code
+		x_val = 1          # default value of x
+		pos2val = {}       # {position(bit): signal(1|0|z|x)}
 		path = os.path.join(self.path, self.file_list['VCD'])
-		regex2 = re.compile(r'#(\d+)')  # match period
+		regex2 = re.compile(r'#(\d+)')          # match period
 		regex3 = re.compile(r'([0|1|x|z])(.)')  # match testbench
 
 		with open(path, "r") as f:
@@ -483,11 +484,13 @@ class PatternGen(object):
 							else:
 								self.sig2pio[entri] = 'input'
 						write_length(fw, tb_counter)
+						self.trf_param['vcd_list'].append(tb_counter)
 						write_mask(fw, self.sig2pos, self.sig2pio)
 						write_operator(fw, TESTBENCH_OP, 0)
 						self.total_length += 3
 						tb_counter = 0
 			write_length(fw, tb_counter)
+			self.trf_param['vcd_len'] = tick + 1 + 2 * len(self.trf_param['vcd_list'])
 
 	def sbc_parser(self, file):
 		soup = get_soup(self.include_path, file)
@@ -592,7 +595,7 @@ class PatternGen(object):
 			val = val + str(bus_val)
 		return val + ' '
 
-	def trf2vcd(self, trf, vcd):
+	def trf2vcd(self, trf, vcd, flag='bypass'):
 		tick = 0
 		sym2val = {}
 		path_trf = os.path.join(self.path, trf)
@@ -605,8 +608,13 @@ class PatternGen(object):
 			'timescale': '1us'
 		}
 		# Prepare param for trf abandon
-		vcd_len = self.trf_param['vcd_len']
-		x1 = 2048 - (self.trf_param['bs_len'] + 3) % 2048 - 3
+		if flag == 'bypass':   # a fixed value is given, to bypass the writing of PTN
+			vcd_len = 4079     # from project "counter"
+			bs_len = 3225608   # from project "counter"
+		else:
+			vcd_len = self.trf_param['vcd_len']
+			bs_len = self.trf_param['bs_len']
+		x1 = 2048 - (bs_len + 3) % 2048 - 3
 		if vcd_len <= 2048:
 			end_tick = vcd_len - 1
 		else:
@@ -672,10 +680,13 @@ class PatternGen(object):
 						for bit, val in byte_dict.items():
 							pos = (i + 1, bit)
 							sig = pos2sig.setdefault(pos, 0)  # Signal name, string.
-							if sig in sig2sym:  # Normal signal or distributed bus signal.
+							if sig == 0:
+								continue
+							elif sig in sig2sym:  # Normal signal or distributed bus signal.
 								sym2val[sig2sym[sig]] = val
 							else:  # Concentrated bus signal
 								for key in sig2sym:
+									print(sig)
 									if re.sub(r'\[\d+\]', '', sig) in key:
 										sym2val[sig2sym[key]] = self.get_bus_val(line_tuple, key)
 										# print(sig2sym[key], sym2val[sig2sym[key]])
@@ -773,24 +784,18 @@ class PatternGen(object):
 			write_mask(fw, self.cmd2pos, self.cmd2spio)
 			write_operator(fw, BITSTREAM_OP, 0)
 			self.total_length += 3
-			print('total length = ' + str(self.total_length))
 			while self.tick < self.bs_start:
 				# print(self.tick)
 				self.write_command(fw)
 				self.tick += 1
 				self.total_length += 1
-			print('total length = ' + str(self.total_length))
 			# Check clock edge.
 			self.edge_check(fw)
 			self.write_bitstream(fw)
-			print('total length = ' + str(self.total_length))
 			self.write_nop(fw)
-			print('total length = ' + str(self.total_length))
 			self.write_testbench(fw)
-			print('total length = ' + str(self.total_length))
 			write_operator(fw, END_OP, 0)
 			self.total_length += 1
-			print('total length = ' + str(self.total_length))
 			self.completion(fw)
 			print("Finished!")
 
@@ -800,11 +805,12 @@ class PatternGen(object):
 
 @timer
 def test():
-	pattern = PatternGen(path='pin_test', tfo_file='tfo_demo.tfo')
+	# pattern = PatternGen(path='pin_test', tfo_file='tfo_demo.tfo')
 	# pattern = PatternGen('CLK', 'tfo_demo.tfo', '-legacy')  # Test txt(vcd) format.
 	# pattern = PatternGen('LX200', 'mul1.tfo', '-legacy')  # Test bus.
 	# pattern = PatternGen('stage1_horizontal_double_0', 'tfo_demo.tfo', '-legacy')  # Test bus.
 	# pattern = PatternGen('test_tri', 'tfo_demo.tfo')  # Test trigate bus.
+	pattern = PatternGen('counter', 'tfo_demo.tfo')  # Test trigate bus.
 
 	# print('path = ' + pattern.path)
 	# print('include path = ' + pattern.include_path)
@@ -822,9 +828,9 @@ def test():
 	print(pattern.file_list)
 	print('\n'.join(['%s = %s' % item for item in pattern.__dict__.items()]))
 
-	pattern.write()
+	# pattern.write()
 	# print(pattern.sym2sig)
-	# pattern.trf2vcd('test_result.trf', 'test_result.vcd')
+	pattern.trf2vcd('c33.trf', 'test_result.vcd')
 
 
 if __name__ == "__main__":

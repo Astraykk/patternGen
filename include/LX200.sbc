@@ -15,7 +15,7 @@
 	<SIG name = "TCK" value = "const0" default = "0"/>
 	<SIG name = "TMS" value = "const0" default = "0"/>
 	
-	<BTC start = "1400T" type = "RBT" width = "32">
+	<BTC start = "15020T" type = "RBT" width = "32">
 		<DATA name = "D0" byte = "4" bit = "0" default = "0"/>
 		<DATA name = "D1" byte = "4" bit = "1" default = "0"/>
 		<DATA name = "D2" byte = "4" bit = "2" default = "0"/>
