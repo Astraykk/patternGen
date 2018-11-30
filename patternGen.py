@@ -217,7 +217,7 @@ class PatternGen(object):
 	bs_start = 0        # start of bitstream
 	cclk_pos = (0, 0)   # position of cclk, used for writing nop
 	last_pos2val = {}   # record the infomation of last content
-	trf_param = {'vcd_list': []}
+	trf_param = {'vcd_list': [], 'bs_len': 0}
 	total_length = 0    # global counter of the pattern
 
 	# signal dictionary
@@ -490,7 +490,7 @@ class PatternGen(object):
 						self.total_length += 3
 						tb_counter = 0
 			write_length(fw, tb_counter)
-			self.trf_param['vcd_len'] = tick + 1 + 2 * len(self.trf_param['vcd_list'])
+			self.trf_param['vcd_len'] = tick + 2 * len(self.trf_param['vcd_list'])  # may be error
 
 	def sbc_parser(self, file):
 		soup = get_soup(self.include_path, file)
@@ -597,6 +597,7 @@ class PatternGen(object):
 
 	def trf2vcd(self, trf, vcd, flag='bypass'):
 		tick = 0
+		order = 0
 		sym2val = {}
 		path_trf = os.path.join(self.path, trf)
 		path_vcd = os.path.join(self.path, vcd)
@@ -609,16 +610,16 @@ class PatternGen(object):
 		}
 		# Prepare param for trf abandon
 		if flag == 'bypass':   # a fixed value is given, to bypass the writing of PTN
-			vcd_len = 4079     # from project "counter"
-			bs_len = 3225608   # from project "counter"
-		else:
-			vcd_len = self.trf_param['vcd_len']
-			bs_len = self.trf_param['bs_len']
+			# vcd_len = 2700     # from project "counter"
+			# bs_len = 3225608   # from project "counter"
+			self.load_temp()
+		vcd_len = self.trf_param['vcd_len']
+		bs_len = self.trf_param['bs_len']
 		x1 = 2048 - (bs_len + 3) % 2048 - 3
 		if vcd_len <= 2048:
 			end_tick = vcd_len - 1
 		else:
-			end_tick = 2047 + vcd_len - x1
+			end_tick = 2049 + vcd_len - x1
 		with open(path_trf, 'rb') as ft, open(path_vcd, 'w') as fv:
 			for item in title:
 				fv.write('${}\n\t{}\n$end\n'.format(item, title[item]))
@@ -636,64 +637,51 @@ class PatternGen(object):
 			line = ft.read(BIN_BYTE_WIDTH)  # Bytes type
 			last_line = None
 			while line:
+				print(line)
 				# tick check
 				if tick > end_tick:
+					fv.write('#{}'.format(order))
 					break
-				elif tick == 0 or tick == 1 or tick:
-					pass
-				sym2val = {}
-				line_tuple = struct.unpack('>' + 'B' * 16, line)
-				# print(line_tuple)
-				if not last_line:
-					fv.write('#{}\n$dumpvars\n'.format(tick))
-					# for sig in self.sig2pos:
-					# 	pos = self.sig2pos.get(sig)
-					# 	if pos:
-					# 		val = (line_tuple[pos[0]-1] >> pos[1]) & 1
-					# 	if sig2sym.get(sig):
-					# 		sym2val[sym] = val
-					for sym, sig in self.sym2sig.items():
-						if isinstance(sig, tuple):
-							# bus_width = sig[1] - sig[2]
-							# bus_signal = bus_width > 0 and 1 or -1
-							# val = 'b'
-							# for i in range(0, bus_width + bus_signal, bus_signal):
-							# 	bus_sig = '{}[{}]'.format(sig[0], str(sig[1]-i))
-							# 	bus_pos = self.sig2pos[bus_sig]
-							# 	bus_val = (line_tuple[bus_pos[0]-1] >> bus_pos[1]) & 1
-							# 	val = val + str(bus_val)
-							# sym2val[sym] = val+' '
-							sym2val[sym] = self.get_bus_val(line_tuple, sig)
-						else:
-							pos = self.sig2pos.get(sig)
-							if pos:
-								sym2val[sym] = (line_tuple[pos[0] - 1] >> pos[1]) & 1
-					for sym, val in sym2val.items():  # Write all symbol + value together.
-						fv.write('{}{}\n'.format(val, sym))
-					fv.write('$end\n')
-				elif line != last_line:
-					fv.write('#{}\n'.format(tick))
-					last_line_tuple = struct.unpack('>' + 'B' * 16, last_line)
-					diff = map(find_diff, line_tuple, last_line_tuple)  # Return a list of dictionary.
-					# print(diff)
-					for i, byte_dict in enumerate(diff):
-						for bit, val in byte_dict.items():
-							pos = (i + 1, bit)
-							sig = pos2sig.setdefault(pos, 0)  # Signal name, string.
-							if sig == 0:
-								continue
-							elif sig in sig2sym:  # Normal signal or distributed bus signal.
-								sym2val[sig2sym[sig]] = val
-							else:  # Concentrated bus signal
-								for key in sig2sym:
-									print(sig)
-									if re.sub(r'\[\d+\]', '', sig) in key:
-										sym2val[sig2sym[key]] = self.get_bus_val(line_tuple, key)
-										# print(sig2sym[key], sym2val[sig2sym[key]])
-										break
-					for sym, val in sym2val.items():
-						fv.write('{}{}\n'.format(val, sym))
-				last_line = line
+				# elif tick == 0 or tick == 1 or x1 <= tick < 2048:
+				# 	line = ft.read(BIN_BYTE_WIDTH)
+				# 	tick += 1
+				# 	continue  # delete
+				elif 1 < tick < x1 or tick >= 2048:
+					sym2val = {}
+					line_tuple = struct.unpack('>' + 'B' * 16, line)
+					if not last_line:  # first line
+						fv.write('#{}\n$dumpvars\n'.format(order))
+						for sym, sig in self.sym2sig.items():
+							if isinstance(sig, tuple):
+								sym2val[sym] = self.get_bus_val(line_tuple, sig)
+							else:
+								pos = self.sig2pos.get(sig)
+								if pos:
+									sym2val[sym] = (line_tuple[pos[0] - 1] >> pos[1]) & 1
+						for sym, val in sym2val.items():  # Write all symbol + value together.
+							fv.write('{}{}\n'.format(val, sym))
+						fv.write('$end\n')
+					elif line != last_line:
+						fv.write('#{}\n'.format(order))
+						last_line_tuple = struct.unpack('>' + 'B' * 16, last_line)
+						diff = map(find_diff, line_tuple, last_line_tuple)  # Return a list of dictionary.
+						for i, byte_dict in enumerate(diff):
+							for bit, val in byte_dict.items():
+								pos = (i + 1, bit)
+								sig = pos2sig.setdefault(pos, 0)  # Signal name, string.
+								if sig == 0:
+									continue
+								elif sig in sig2sym:  # Normal signal or distributed bus signal.
+									sym2val[sig2sym[sig]] = val
+								else:  # Concentrated bus signal
+									for key in sig2sym:
+										if re.sub(r'\[\d+\]', '', sig) in key:
+											sym2val[sig2sym[key]] = self.get_bus_val(line_tuple, key)
+											break
+						for sym, val in sym2val.items():
+							fv.write('{}{}\n'.format(val, sym))
+					last_line = line
+					order += 1
 				line = ft.read(BIN_BYTE_WIDTH)
 				tick += 1
 
@@ -799,6 +787,23 @@ class PatternGen(object):
 			self.completion(fw)
 			print("Finished!")
 
+	def save_temp(self):
+		path = os.path.join(self.path, "temp")
+		ft = open(path, "w+")
+		ft.write('\n'.join(['%s = %s' % item for item in self.__dict__.items()]))
+		ft.write('\ntrf_param = ' + str(self.trf_param))
+		# for key in dir(self):
+		# 	if '__' not in key:
+		# 		ft.write('%s = %s\n' % (key, exec('self.'+key)))
+		ft.close()
+
+	def load_temp(self):
+		path = os.path.join(self.path, "temp")
+		fp = open(path, 'r')
+		for line in fp.readlines():
+			exec('self.' + line)
+		print(self.trf_param)
+
 
 """Main process and test"""
 
@@ -824,13 +829,16 @@ def test():
 	# print('sig2pio = ' + str(pattern.sig2pio))
 	# print('entri_dict = ' + str(pattern.entri_dict))
 	# print('sig2pos = ' + str(pattern.sig2pos))
-	print(pattern.__dict__.keys())
-	print(pattern.file_list)
-	print('\n'.join(['%s = %s' % item for item in pattern.__dict__.items()]))
 
 	# pattern.write()
+	# pattern.save_temp()
+	# pattern.load_temp()
 	# print(pattern.sym2sig)
-	pattern.trf2vcd('c33.trf', 'test_result.vcd')
+	pattern.trf2vcd('counter.trf', 'test_result.vcd', flag='bypass')
+
+	# print(dir(pattern))
+	# print(pattern.file_list)
+	# print('\n'.join(['%s = %s' % item for item in pattern.__dict__.items()]))
 
 
 if __name__ == "__main__":
