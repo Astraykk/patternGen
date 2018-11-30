@@ -707,21 +707,26 @@ class PatternGen(object):
 		pos2val = {}
 		# gen = self.rbt_generator('pin_test.rbt')  # only for test
 		gen = self.rbt_generator(self.file_list['BIT'] + '.rbt')
+		zero_line_1 = b'/x00' * 16
 		for line in gen:
 			# print(self.tick, line)
-			for key, flag in self.cmd2flag.items():
-				value = get_sig_value(flag, self.tick)
-				pos2val[self.cmd2pos[key]] = value
-			for i, value in enumerate(line.strip('\n')):
-				if i >= 32:  # TODO: UGLY CODE!!!
-					break
-				# print(i, value)
-				sig = self.pos2data[i]
-				pos = self.cmd2pos[sig]
-				pos2val[pos] = value
-			write_content(fw, pos2val)
-			pos2val[self.cclk_pos] = 1
-			write_content(fw, pos2val)
+			if line[:32] == '0' * 32:
+				fw.write(b'\x00' * 16)
+				fw.write(b'\x00' * 16)
+			else:
+				for key, flag in self.cmd2flag.items():
+					value = get_sig_value(flag, self.tick)
+					pos2val[self.cmd2pos[key]] = value
+				for i, value in enumerate(line.strip('\n')):
+					if i >= 32:  # TODO: UGLY CODE!!!
+						break
+					# print(i, value)
+					sig = self.pos2data[i]
+					pos = self.cmd2pos[sig]
+					pos2val[pos] = value
+				write_content(fw, pos2val)
+				pos2val[self.cclk_pos] = 1
+				write_content(fw, pos2val)
 			self.tick += 2
 			self.total_length += 2
 		self.last_pos2val = pos2val
@@ -830,11 +835,11 @@ def test():
 	# print('entri_dict = ' + str(pattern.entri_dict))
 	# print('sig2pos = ' + str(pattern.sig2pos))
 
-	# pattern.write()
+	pattern.write()
 	# pattern.save_temp()
 	# pattern.load_temp()
 	# print(pattern.sym2sig)
-	pattern.trf2vcd('counter.trf', 'test_result.vcd', flag='bypass')
+	# pattern.trf2vcd('counter.trf', 'test_result.vcd', flag='bypass')
 
 	# print(dir(pattern))
 	# print(pattern.file_list)
