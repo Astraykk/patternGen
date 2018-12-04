@@ -217,7 +217,8 @@ class PatternGen(object):
 	bs_start = 0        # start of bitstream
 	cclk_pos = (0, 0)   # position of cclk, used for writing nop
 	last_pos2val = {}   # record the infomation of last content
-	trf_param = {'vcd_list': [], 'bs_len': 0}
+	trf_param = {'vcd_list': [], 'bs_len': 0}  # parameter for trf2vcd()
+	digital_param = {'period': '1u', 'multiple': 1}  # parameter from ITM file
 	total_length = 0    # global counter of the pattern
 
 	# signal dictionary
@@ -637,7 +638,7 @@ class PatternGen(object):
 			line = ft.read(BIN_BYTE_WIDTH)  # Bytes type
 			last_line = None
 			while line:
-				print(line)
+				# print(line)
 				# tick check
 				if tick > end_tick:
 					fv.write('#{}'.format(order))
@@ -707,12 +708,14 @@ class PatternGen(object):
 		pos2val = {}
 		# gen = self.rbt_generator('pin_test.rbt')  # only for test
 		gen = self.rbt_generator(self.file_list['BIT'] + '.rbt')
-		zero_line_1 = b'/x00' * 16
+		zero_line_1 = b'\x00' * 16
+		byte, bit = self.cclk_pos
+		zero_line_2 = b'\x00' * (byte - 1) + struct.pack('B', 2 ** bit) + b'\x00' * (16 - byte)
+		print(zero_line_2)
 		for line in gen:
 			# print(self.tick, line)
 			if line[:32] == '0' * 32:
-				fw.write(b'\x00' * 16)
-				fw.write(b'\x00' * 16)
+				fw.write(zero_line_1 + zero_line_2)
 			else:
 				for key, flag in self.cmd2flag.items():
 					value = get_sig_value(flag, self.tick)
@@ -795,11 +798,8 @@ class PatternGen(object):
 	def save_temp(self):
 		path = os.path.join(self.path, "temp")
 		ft = open(path, "w+")
-		ft.write('\n'.join(['%s = %s' % item for item in self.__dict__.items()]))
+		# ft.write('\n'.join(['%s = %s' % item for item in self.__dict__.items()]))
 		ft.write('\ntrf_param = ' + str(self.trf_param))
-		# for key in dir(self):
-		# 	if '__' not in key:
-		# 		ft.write('%s = %s\n' % (key, exec('self.'+key)))
 		ft.close()
 
 	def load_temp(self):
@@ -821,19 +821,6 @@ def test():
 	# pattern = PatternGen('stage1_horizontal_double_0', 'tfo_demo.tfo', '-legacy')  # Test bus.
 	# pattern = PatternGen('test_tri', 'tfo_demo.tfo')  # Test trigate bus.
 	pattern = PatternGen('counter', 'tfo_demo.tfo')  # Test trigate bus.
-
-	# print('path = ' + pattern.path)
-	# print('include path = ' + pattern.include_path)
-	# print('file list = ' + str(pattern.file_list))
-	# print('cmd2spio = ' + str(pattern.cmd2spio))
-	# print('cmd2pos = ' + str(pattern.cmd2pos))
-	# print('cmd2flag = ' + str(pattern.cmd2flag))
-	# print('bs_start = ' + str(pattern.bs_start))
-	# print('pos2data = ' + str(pattern.pos2data))
-	# print('nop = ' + str(pattern.nop))
-	# print('sig2pio = ' + str(pattern.sig2pio))
-	# print('entri_dict = ' + str(pattern.entri_dict))
-	# print('sig2pos = ' + str(pattern.sig2pos))
 
 	pattern.write()
 	# pattern.save_temp()
