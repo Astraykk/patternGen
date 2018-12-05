@@ -563,6 +563,8 @@ class PatternGen(object):
 		with open(path, "r") as f:
 			line = f.readline()
 			while line:
+				if regex2.match(line):
+					break
 				m = regex1.match(line)
 				if m:
 					if m.group(5):  # Combined bus
@@ -571,10 +573,11 @@ class PatternGen(object):
 						sym2sig[m.group(1)] = (m.group(2), msb, lsb)  # symbol => (bus, MSB, LSB)
 					elif m.group(3):
 						sym2sig[m.group(1)] = m.group(2) + m.group(3)
+					elif m.group(2) not in self.sig2pos.keys():
+						line = f.readline()
+						continue
 					else:
 						sym2sig[m.group(1)] = m.group(2)
-				elif regex2.match(line):
-					break
 				line = f.readline()
 		return sym2sig
 
@@ -708,10 +711,11 @@ class PatternGen(object):
 		pos2val = {}
 		# gen = self.rbt_generator('pin_test.rbt')  # only for test
 		gen = self.rbt_generator(self.file_list['BIT'] + '.rbt')
-		zero_line_1 = b'\x00' * 16
-		byte, bit = self.cclk_pos
-		zero_line_2 = b'\x00' * (byte - 1) + struct.pack('B', 2 ** bit) + b'\x00' * (16 - byte)
-		print(zero_line_2)
+		# zero_line_1 = b'\x00' * 16
+		# byte, bit = self.cclk_pos
+		# zero_line_2 = b'\x00' * (byte - 1) + struct.pack('B', 2 ** bit) + b'\x00' * (16 - byte)
+		zero_line_1 = b'\x00' * 9 + b'\xc8' + b'\x00' * 6
+		zero_line_2 = b'\x00' * 9 + b'\xca' + b'\x00' * 6
 		for line in gen:
 			# print(self.tick, line)
 			if line[:32] == '0' * 32:
@@ -815,14 +819,15 @@ class PatternGen(object):
 
 @timer
 def test():
-	# pattern = PatternGen(path='pin_test', tfo_file='tfo_demo.tfo')
+	pattern = PatternGen(path='pin_test', tfo_file='tfo_demo.tfo')
 	# pattern = PatternGen('CLK', 'tfo_demo.tfo', '-legacy')  # Test txt(vcd) format.
 	# pattern = PatternGen('LX200', 'mul1.tfo', '-legacy')  # Test bus.
 	# pattern = PatternGen('stage1_horizontal_double_0', 'tfo_demo.tfo', '-legacy')  # Test bus.
 	# pattern = PatternGen('test_tri', 'tfo_demo.tfo')  # Test trigate bus.
-	pattern = PatternGen('counter', 'tfo_demo.tfo')  # Test trigate bus.
+	# pattern = PatternGen('counter', 'tfo_demo.tfo')  # Test trigate bus.
 
 	pattern.write()
+	print(pattern.sym2sig)
 	# pattern.save_temp()
 	# pattern.load_temp()
 	# print(pattern.sym2sig)
