@@ -11,12 +11,14 @@ Summary:
 import re, sys, os, struct
 import bs4
 import time
-from filebrowser.sites import site
+if __name__ != "__main__":
+	from filebrowser.sites import site
+	DIRECTORY = os.path.join(site.storage.location, "uploads")  # /path/to/mysite/
+else:
+	DIRECTORY = sys.path[0]  # os.path.join(sys.path[0], 'uploads')
 
 # import timeit
 
-#DIRECTORY = sys.path[0]  # os.path.join(sys.path[0], 'uploads')
-DIRECTORY = os.path.join(site.storage.location, "uploads")   # /path/to/mysite/
 PROJECT_PATH = ''  # /mysite/uploads/project/
 INCLUDE_PATH = 'include'  # /mysite/tools/include/
 

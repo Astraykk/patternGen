@@ -11,12 +11,14 @@ Summary:
 import re, sys, os, struct
 import bs4
 import time
-# from filebrowser.sites import site
+if __name__ != "__main__":
+	from filebrowser.sites import site
+	DIRECTORY = os.path.join(site.storage.location, "uploads")  # /path/to/mysite/
+else:
+	DIRECTORY = sys.path[0]  # os.path.join(sys.path[0], 'uploads')
 
 # import timeit
 
-DIRECTORY = sys.path[0]  # os.path.join(sys.path[0], 'uploads')
-# DIRECTORY = os.path.join(site.storage.location, "uploads")   # /path/to/mysite/
 PROJECT_PATH = ''  # /mysite/uploads/project/
 INCLUDE_PATH = 'include'  # /mysite/tools/include/
 
@@ -85,16 +87,17 @@ def txt2pio_ucf(txt, pio, ucf):
 """Write operation, mask, or testbench"""
 
 
-def write_content(fw, pos_dict):
+def write_content(fw, pos_dict, base=[0]*16):
 	if not pos_dict:
-		# print("Nothing")
 		return
-	numbers = [0] * 16
+	numbers = base[:]
+	# print(numbers)
 	for key, value in pos_dict.items():
 		if key:
 			numbers[key[0] - 1] += 2 ** key[1] * int(value)
 		# numbers[key[0]-1] += int(value) << key[1]  # shift operation is faster?
 	for num in numbers:
+		# print(num)
 		fw.write(struct.pack('B', num))
 
 
@@ -220,6 +223,8 @@ class PatternGen(object):
 	trf_param = {'vcd_list': [], 'bs_len': 0}  # parameter for trf2vcd()
 	digital_param = {'period': '1u', 'multiple': 1}  # parameter from ITM file
 	total_length = 0    # global counter of the pattern
+	base_0 = []
+	base_1 = []
 
 	# signal dictionary
 	cmd2spio = {}
@@ -257,8 +262,6 @@ class PatternGen(object):
 
 		# get symbol2signal dictionary from vcd/txt file
 		self.sym2sig = self.get_sym2sig()
-		# print('\n'.join(['%s = %s' % item for item in self.__dict__.items()]))  # ONLY FOR TEST
-		pass
 
 	def tfo_parser(self, file):
 		"""
@@ -428,7 +431,8 @@ class PatternGen(object):
 	def vcd_parser(self, fw):
 		tick = -1          # current tick
 		tb_counter = -1    # length of testbench in operation code
-		x_val = 1          # default value of x
+		x_val = 0          # default value of x
+		z_val = 0
 		pos2val = {}       # {position(bit): signal(1|0|z|x)}
 		path = os.path.join(self.path, self.file_list['VCD'])
 		regex2 = re.compile(r'#(\d+)')          # match period
@@ -599,7 +603,8 @@ class PatternGen(object):
 			val = val + str(bus_val)
 		return val + ' '
 
-	def trf2vcd(self, trf, vcd, flag='bypass'):
+	@timer
+	def trf2vcd(self, trf, vcd, flag=None):
 		tick = 0
 		order = 0
 		sym2val = {}
@@ -614,8 +619,6 @@ class PatternGen(object):
 		}
 		# Prepare param for trf abandon
 		if flag == 'bypass':   # a fixed value is given, to bypass the writing of PTN
-			# vcd_len = 2700     # from project "counter"
-			# bs_len = 3225608   # from project "counter"
 			self.load_temp()
 		vcd_len = self.trf_param['vcd_len']
 		bs_len = self.trf_param['bs_len']
@@ -624,6 +627,7 @@ class PatternGen(object):
 			end_tick = vcd_len - 1
 		else:
 			end_tick = 2049 + vcd_len - x1
+
 		with open(path_trf, 'rb') as ft, open(path_vcd, 'w') as fv:
 			for item in title:
 				fv.write('${}\n\t{}\n$end\n'.format(item, title[item]))
@@ -641,15 +645,9 @@ class PatternGen(object):
 			line = ft.read(BIN_BYTE_WIDTH)  # Bytes type
 			last_line = None
 			while line:
-				# print(line)
-				# tick check
 				if tick > end_tick:
 					fv.write('#{}'.format(order))
 					break
-				# elif tick == 0 or tick == 1 or x1 <= tick < 2048:
-				# 	line = ft.read(BIN_BYTE_WIDTH)
-				# 	tick += 1
-				# 	continue  # delete
 				elif 1 < tick < x1 or tick >= 2048:
 					sym2val = {}
 					line_tuple = struct.unpack('>' + 'B' * 16, line)
@@ -709,34 +707,47 @@ class PatternGen(object):
 
 	def write_bitstream(self, fw):
 		pos2val = {}
-		# gen = self.rbt_generator('pin_test.rbt')  # only for test
 		gen = self.rbt_generator(self.file_list['BIT'] + '.rbt')
 		# zero_line_1 = b'\x00' * 16
 		# byte, bit = self.cclk_pos
 		# zero_line_2 = b'\x00' * (byte - 1) + struct.pack('B', 2 ** bit) + b'\x00' * (16 - byte)
-		zero_line_1 = b'\x00' * 9 + b'\xc8' + b'\x00' * 6
-		zero_line_2 = b'\x00' * 9 + b'\xca' + b'\x00' * 6
+		self.base_0 = [0] * 16
+		self.base_1 = [0] * 16
+		for key, flag in self.cmd2flag.items():
+			value = get_sig_value(flag, self.tick)
+			pos = self.cmd2pos[key]
+			self.base_0[pos[0] - 1] += 2 ** pos[1] * int(value)
+			self.base_1[pos[0] - 1] += 2 ** pos[1] * int(value)
+		self.base_1[self.cclk_pos[0]-1] += 2 ** self.cclk_pos[1]
+		# zero_line_1 = b'\x00' * 9 + b'\xc8' + b'\x00' * 6
+		# zero_line_2 = b'\x00' * 9 + b'\xca' + b'\x00' * 6
+		zero_line_0 = b''
+		zero_line_1 = b''
+		for i in range(16):
+			zero_line_0 += struct.pack('B', self.base_0[i])
+			zero_line_1 += struct.pack('B', self.base_1[i])
 		for line in gen:
-			# print(self.tick, line)
 			if line[:32] == '0' * 32:
-				fw.write(zero_line_1 + zero_line_2)
+				fw.write(zero_line_0 + zero_line_1)
 			else:
-				for key, flag in self.cmd2flag.items():
-					value = get_sig_value(flag, self.tick)
-					pos2val[self.cmd2pos[key]] = value
+				# for key, flag in self.cmd2flag.items():
+				# 	value = get_sig_value(flag, self.tick)
+				# 	pos2val[self.cmd2pos[key]] = value
 				for i, value in enumerate(line.strip('\n')):
 					if i >= 32:  # TODO: UGLY CODE!!!
 						break
-					# print(i, value)
 					sig = self.pos2data[i]
 					pos = self.cmd2pos[sig]
 					pos2val[pos] = value
-				write_content(fw, pos2val)
-				pos2val[self.cclk_pos] = 1
-				write_content(fw, pos2val)
+				write_content(fw, pos2val, base=self.base_0)
+				# pos2val[self.cclk_pos] = 1
+				write_content(fw, pos2val, base=self.base_1)
 			self.tick += 2
 			self.total_length += 2
 		self.last_pos2val = pos2val
+		for key, flag in self.cmd2flag.items():
+			value = get_sig_value(flag, self.tick)
+			self.last_pos2val[self.cmd2pos[key]] = value
 
 	# print(self.last_bs)
 
@@ -748,18 +759,13 @@ class PatternGen(object):
 		line = fw.read()
 		fw.seek(0, 2)
 		cclk_pos = self.cmd2pos['CCLK']
-		# cclk_pos = 8 * (cclk_pos_tuple[0] - 1) + cclk_pos_tuple[1]
 		if start == 'AFB':
 			for i in range(cycle):
-				# if line[cclk_pos] == '1':
-				# 	cclk_line = line[:cclk_pos] + '0' + line[cclk_pos:]
-				# else:
-				# 	cclk_line = line[:cclk_pos] + '1' + line[cclk_pos:]
 				if self.last_pos2val[cclk_pos]:
 					self.last_pos2val[cclk_pos] = 0
 				else:
 					self.last_pos2val[cclk_pos] = 1
-				write_content(fw, self.last_pos2val)
+				write_content(fw, self.last_pos2val)  #, base=self.base_0)
 				self.tick += 1
 				self.total_length += 1
 		else:
@@ -778,6 +784,7 @@ class PatternGen(object):
 		elif 'legacy' in self.config['command']:
 			self.txt_parser(fw)
 
+	# @timer
 	def write(self):
 		path = os.path.join(self.path, self.file_list['PTN'])
 		with open(path, 'wb+') as fw:
@@ -819,12 +826,12 @@ class PatternGen(object):
 
 @timer
 def test():
-	pattern = PatternGen(path='pin_test', tfo_file='tfo_demo.tfo')
+	# pattern = PatternGen(path='pin_test', tfo_file='tfo_demo.tfo')
 	# pattern = PatternGen('CLK', 'tfo_demo.tfo', '-legacy')  # Test txt(vcd) format.
 	# pattern = PatternGen('LX200', 'mul1.tfo', '-legacy')  # Test bus.
 	# pattern = PatternGen('stage1_horizontal_double_0', 'tfo_demo.tfo', '-legacy')  # Test bus.
 	# pattern = PatternGen('test_tri', 'tfo_demo.tfo')  # Test trigate bus.
-	# pattern = PatternGen('counter', 'tfo_demo.tfo')  # Test trigate bus.
+	pattern = PatternGen('counter', 'tfo_demo.tfo')  # Test trigate bus.
 
 	pattern.write()
 	print(pattern.sym2sig)
