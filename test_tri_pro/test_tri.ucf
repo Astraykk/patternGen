@@ -1,0 +1,17 @@
+
+# PlanAhead Generated physical constraints 
+
+NET "clk" LOC = AP2;
+NET "wea" LOC = AP1;
+NET "addra[3]" LOC = AU2;
+NET "addra[2]" LOC = AU1;
+NET "addra[1]" LOC = AJ10;
+NET "addra[0]" LOC = AJ9;
+NET "tri_inout[7]" LOC = AV5;
+NET "tri_inout[6]" LOC = AU5;
+NET "tri_inout[5]" LOC = AN5;
+NET "tri_inout[4]" LOC = AN4;
+NET "tri_inout[3]" LOC = AW5;
+NET "tri_inout[2]" LOC = AW4;
+NET "tri_inout[1]" LOC = AP7;
+NET "tri_inout[0]" LOC = AN7;

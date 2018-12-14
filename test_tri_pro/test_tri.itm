@@ -1,0 +1,11 @@
+<ITEM name = "test_tri">
+	<POWER>
+	</POWER>
+	<DC>
+	</DC>
+	<DIGITAL>
+		<CYCLE period = "1u" multiple = "1" />
+	<DIGITAL>
+	<ANALOG>
+	</ANALOG>
+</ITEM>
