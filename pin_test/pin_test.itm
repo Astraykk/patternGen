@@ -4,7 +4,7 @@
 	<DC>
 	</DC>
 	<DIGITAL>
-		<CYCLE period = "1"/>
+		<CYCLE period = "1u"/>
 	<DIGITAL>
 	<ANALOG>
 	</ANALOG>

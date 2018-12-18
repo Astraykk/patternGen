@@ -266,7 +266,7 @@ class PatternGen(object):
 			self.tfo_parser(tfo_file)  # Get position of user files.
 		self.atf_parser(self.file_list['ATF'])  # Get position of include files.
 		self.itm_parser(self.file_list['ITM'])
-		print(self.file_list)
+		# print(self.file_list)
 
 		# initialize bitstream infolf.cmd2spio, whatever = self.pio_parser(self.include_path, self.file_list['SPIO'])
 		self.cmd2spio, whatever = self.pio_parser(self.include_path, self.file_list['SPIO'])
@@ -474,7 +474,7 @@ class PatternGen(object):
 		pos2val = {}       # {position(bit): signal(1|0|z|x)}
 		path = os.path.join(self.path, self.file_list['VCD'])
 		regex2 = re.compile(r'#(\d+)')           # match period
-		regex3 = re.compile(r'([0|1|x|z]+)(.)')  # match testbench
+		regex3 = re.compile(r'b?([0|1|x|z]+)\s*(.)')  # match testbench
 
 		with open(path, "r") as f:
 			if not self.entri_dict:
@@ -523,11 +523,15 @@ class PatternGen(object):
 					if isinstance(self.sym2sig[key], tuple):
 						bus_ele = self.sym2sig[key]
 						bus_width = bus_ele[1] - bus_ele[2]
+						# print("{} {}".format(bus_width, bus_ele))
 						bus_signal = bus_width > 0 and 1 or -1
-						value = '0' * (abs(bus_width) - len(value)) + value  # Fill 0 on the left
+						value = '0' * (abs(bus_width) + 1 - len(value)) + value  # Fill 0 on the left
 						for i in range(0, bus_width + bus_signal, bus_signal):
 							bus_sig = '{}[{}]'.format(bus_ele[0], str(bus_ele[1] - i))
+							# print("tick={} {} {}".format(tick, bus_sig, self.sig2pos))
+							# print("i={}, value={}".format(i, value))
 							pos2val[self.sig2pos.setdefault(bus_sig, None)] = value[abs(i)]
+							# print('ok')
 					# print('signal = %s, value = %s' % (bus_sig, value[abs(i)]))
 					else:
 						if value == 'x':
@@ -631,7 +635,6 @@ class PatternGen(object):
 					m3 = re.match(r'\s*(\d+\w+)\s*', f.readline())
 					timescale = m3.group(1)
 					self.digital_param['period_int'] = int(timescale_op(self.digital_param['period']) / timescale_op(timescale))
-					# print('here')
 					# print(self.digital_param['period_int'], type(self.digital_param['period_int']))
 				m = regex1.match(line)
 				if m:
@@ -667,12 +670,12 @@ class PatternGen(object):
 			val = val + str(bus_val)
 		return val + ' '
 
-	@timer
 	def trf2vcd(self, trf, vcd, flag=None):
 		tick = 0
 		order = 0
 		sym2val = {}
 		path_trf = os.path.join(self.path, trf)
+		path_pruned_trf = os.path.join(self.path, 'pruned_' + trf)
 		path_vcd = os.path.join(self.path, vcd)
 		pos2sig = {v: k for k, v in self.sig2pos.items()}
 		sig2sym = {v: k for k, v in self.sym2sig.items()}
@@ -692,7 +695,7 @@ class PatternGen(object):
 		else:
 			end_tick = 2049 + vcd_len - x1
 
-		with open(path_trf, 'rb') as ft, open(path_vcd, 'w') as fv:
+		with open(path_trf, 'rb') as ft, open(path_vcd, 'w') as fv, open(path_pruned_trf, 'wb') as fp:
 			for item in title:
 				fv.write('${}\n\t{}\n$end\n'.format(item, title[item]))
 			fv.write('$scope module {}_tb $end\n'.format(self.project_name))
@@ -715,6 +718,7 @@ class PatternGen(object):
 				elif 1 < tick < x1 or tick >= 2048:
 					sym2val = {}
 					line_tuple = struct.unpack('>' + 'B' * 16, line)
+					fp.write(line)  # generate pruned TRF file
 					if not last_line:  # first line
 						fv.write('#{}\n$dumpvars\n'.format(order))
 						for sym, sig in self.sym2sig.items():
@@ -751,9 +755,47 @@ class PatternGen(object):
 				line = ft.read(BIN_BYTE_WIDTH)
 				tick += 1
 
+	def compare_trf(self, ptn, trf):
+		# compare trf and ptn file, generate report.
+		pos2sig = {v: k for k, v in self.sig2pos.items()}
+		sig2sym = {v: k for k, v in self.sym2sig.items()}
+		path_ptn = os.path.join(self.path, ptn)
+		path_trf = os.path.join(self.path, trf)
+		path_rpt = os.path.join(self.path, self.file_list['RPT'])
+		ptn_start = 3 + self.trf_param['bs_len'] + 3
+		vcd_len = self.trf_param['vcd_len']
+		with open(path_ptn, 'rb') as fp, open(path_trf, 'rb') as ft, open(path_rpt, 'w') as fr:
+			fp.seek(ptn_start * BIN_BYTE_WIDTH)
+			ptn_content = fp.read(vcd_len * BIN_BYTE_WIDTH)
+			with open(os.path.join(self.path, 'stimulus.ptn'), 'wb') as fs:
+				fs.write(ptn_content)
+			trf_content = ft.read()
+			for j in range(vcd_len):
+				sym2val = {}
+				ptn_line = struct.unpack('>' + 'B' * 16, ptn_content[j:j+16])
+				trf_line = struct.unpack('>' + 'B' * 16, trf_content[j:j+16])
+				diff = map(find_diff, trf_line, ptn_line)
+				for i, byte_dict in enumerate(diff):
+					for bit, val in byte_dict.items():
+						pos = (i + 1, bit)
+						sig = pos2sig.setdefault(pos, 0)  # Signal name, string.
+						if sig == 0:
+							continue
+						elif sig in sig2sym:  # Normal signal or distributed bus signal.
+							sym2val[sig2sym[sig]] = val
+						else:  # Concentrated bus signal
+							for key in sig2sym:
+								if re.sub(r'\[\d+\]', '', sig) in key:
+									sym2val[sig2sym[key]] = self.get_bus_val(trf_line, key)
+									break
+				for sym, val in sym2val.items():
+					# write report
+					fr.write('Test result differs at line {}, signal {} = {}\n'.format(j+1, self.sym2sig[sym], val))
+
 	def completion(self, fw):
 		for i in range(2048 - self.total_length % 2048):
-			fw.write(struct.pack('dd', 0, 0))
+			# fw.write(struct.pack('dd', 0, 0))
+			fw.write(b'\x00' * 16)
 
 	def write_attr(self):
 		write_path = os.path.join(self.path, self.project_name)
@@ -861,14 +903,21 @@ class PatternGen(object):
 				self.write_command(fw)
 				self.tick += 1
 				self.total_length += 1
-			# Check clock edge.
-			self.edge_check(fw)
+			print('Command complete')
+			self.edge_check(fw)  # Check clock edge.
+			print('Edge check complete')
 			self.write_bitstream(fw)
+			print('Bitstream complete')
 			self.write_nop(fw)
+			print('Nop complete')
 			self.write_testbench(fw)
+			print('Testbench complete')
 			write_operator(fw, END_OP, 0)
 			self.total_length += 1
 			self.completion(fw)
+			print('2048-completion complete')
+			self.save_temp()
+			print('Temp file saved')
 			print("Finished!")
 
 	def save_temp(self):
@@ -883,7 +932,7 @@ class PatternGen(object):
 		fp = open(path, 'r')
 		for line in fp.readlines():
 			exec('self.' + line)
-		print(self.trf_param)
+		# print(self.trf_param)
 
 
 """Main process and test"""
@@ -907,13 +956,16 @@ def test():
 	# pattern = PatternGen('test_tri_pro', 'tfo_demo.tfo')  # Test trigate bus.
 	pattern = PatternGen('mul5', 'tfo_demo.tfo')
 
-	pattern.write()
+	# pattern.write()
 	# print(pattern.sym2sig)
 	# print(pattern.cmd2spio)
-	pattern.save_temp()
-	# pattern.load_temp()
+	# pattern.save_temp()
+	pattern.load_temp()
 	# print(pattern.sym2sig)
-	# pattern.trf2vcd('counter.trf', 'test_result.vcd', flag='bypass')
+	# pattern.trf2vcd('counter.trf', 'c2.vcd', flag='bypass')
+	pattern.trf2vcd('m8.trf', 'm8.vcd', flag='bypass')
+	# pattern.compare_trf('counter.ptn', 'pruned_counter.trf')
+	pattern.compare_trf('mul5.ptn', 'm8.trf')
 
 	# print(dir(pattern))
 	# print(pattern.file_list)
