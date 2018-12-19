@@ -23,5 +23,17 @@ def compare_ptn(file_1, file_2):
 		print("Comparison finished!")
 
 
+def vcd_merge(vcd_ref, vcd_add):
+	"""
+	Extract signal definition; assign symbol; merge file.
+	:param vcd_ref:
+	:param vcd:
+	:return:
+	"""
+	tick_ref = -1
+	tick_add = -1
+	pass
+
+
 if __name__ == "__main__":
 	compare_ptn('counter/counter.ptn', 'counter/counter.ptn.bak1207')

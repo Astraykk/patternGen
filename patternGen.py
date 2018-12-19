@@ -1,7 +1,7 @@
 #!/usr/bin/python3
 """
-Date:       11/13/2018
-Version:    2.1.0
+Date:       12/19/2018
+Version:    2.1.1
 Author:     Kang Chuanliang
 Summary:
 	basic function: Write PTN; TRF to VCD,
@@ -679,6 +679,8 @@ class PatternGen(object):
 		path_vcd = os.path.join(self.path, vcd)
 		pos2sig = {v: k for k, v in self.sig2pos.items()}
 		sig2sym = {v: k for k, v in self.sym2sig.items()}
+		sorted_sym2sig_key = sorted(self.sym2sig)
+		sorted_sym2sig = map(lambda x: (x, self.sym2sig[x]), sorted_sym2sig_key)
 		title = {
 			'date': time.asctime(time.localtime(time.time())),
 			'version': 'ModelSim Version 10.1c',
@@ -700,7 +702,8 @@ class PatternGen(object):
 				fv.write('${}\n\t{}\n$end\n'.format(item, title[item]))
 			fv.write('$scope module {}_tb $end\n'.format(self.project_name))
 			# Signal definition. Copy the original vcd file.
-			for symbol, signal in self.sym2sig.items():
+			# for symbol, signal in self.sym2sig.items():
+			for symbol, signal in sorted_sym2sig:
 				if isinstance(signal, tuple):
 					io = self.sig2pio['{}[{}]'.format(signal[0], signal[1])] == 'input' and 'reg' or 'wire'
 					signal, width = '{}[{}:{}]'.format(signal[0], signal[1], signal[2]), abs(signal[1] - signal[2] + 1)
@@ -952,9 +955,9 @@ def test():
 	# pattern = PatternGen('LX200', 'mul1.tfo', '-legacy')  # Test bus.
 	# pattern = PatternGen('stage1_horizontal_double_0', 'tfo_demo.tfo', '-legacy')  # Test bus.
 	# pattern = PatternGen('test_tri', 'tfo_demo.tfo')  # Test trigate bus.
-	# pattern = PatternGen('counter', 'tfo_demo.tfo')  # Test trigate bus.
+	pattern = PatternGen('counter', 'tfo_demo.tfo')  # Test trigate bus.
 	# pattern = PatternGen('test_tri_pro', 'tfo_demo.tfo')  # Test trigate bus.
-	pattern = PatternGen('mul5', 'tfo_demo.tfo')
+	# pattern = PatternGen('mul5', 'tfo_demo.tfo')
 
 	# pattern.write()
 	# print(pattern.sym2sig)
@@ -962,10 +965,10 @@ def test():
 	# pattern.save_temp()
 	pattern.load_temp()
 	# print(pattern.sym2sig)
-	# pattern.trf2vcd('counter.trf', 'c2.vcd', flag='bypass')
-	pattern.trf2vcd('m8.trf', 'm8.vcd', flag='bypass')
+	pattern.trf2vcd('counter.trf', 'c3.vcd', flag='bypass')
+	# pattern.trf2vcd('m8.trf', 'm8.vcd', flag='bypass')
 	# pattern.compare_trf('counter.ptn', 'pruned_counter.trf')
-	pattern.compare_trf('mul5.ptn', 'm8.trf')
+	# pattern.compare_trf('mul5.ptn', 'm8.trf')
 
 	# print(dir(pattern))
 	# print(pattern.file_list)
@@ -973,6 +976,9 @@ def test():
 
 	# from mytools import compare_ptn
 	# compare_ptn('counter/counter.ptn', 'counter/counter.ptn.bak1207')
+
+	from vcd2pic.vcd2pic import vcd2pic
+	vcd2pic('counter/c3.vcd', 'counter/c3.jpg')
 
 
 if __name__ == "__main__":
