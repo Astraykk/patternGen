@@ -4,9 +4,7 @@ Date:       12/19/2018
 Version:    2.1.1
 Author:     Kang Chuanliang
 Summary:
-	basic function: Write PTN; TRF to VCD,
-	advanced support: tri_gate; bus (two types); TRF pruning for CF format;
-		two stimulus format (vcd & txt);
+
 """
 import re, sys, os, struct
 import bs4
@@ -194,13 +192,28 @@ def get_symbol(signal, sig2sym):
 		return None
 
 
+def expand_bus(sorted_sym2sig):
+	offset = 0
+	sorted_exp_sym2sig = []
+	for sym, sig in sorted_sym2sig:
+		if isinstance(sig, tuple):
+			bus, msb, lsb = sig
+			step = msb > lsb and -1 or 1
+			for i in range(msb, lsb+step, step):
+				sorted_exp_sym2sig.append((sym, '{}[{}]'.format(bus, i)))
+				sym = chr(ord(sym) + 1)
+			offset += abs(msb-lsb)
+		else:
+			sym = chr(ord(sym) + offset)
+			sorted_exp_sym2sig.append((sym, sig))
+	return sorted_exp_sym2sig
+
+
 def tfo_parser(path, file):
 	"""
-	TODO: Multiple TEST tag, different attr 'name' and 'path'.
-	TODO: Return file_dict like {test1:{path:'path', file1:'file1', ...}, test2:{...}, ...}.
-	Format: {"lbf":"LB010tf1", dut:"LX200", "test":{"pin_test":{"path":".", }}}
+	:param path:
 	:param file:
-	:return file_dict:
+	:return file_list_list:
 	"""
 	file_list_list = {}
 	soup = get_soup(path, file)
@@ -673,14 +686,16 @@ class PatternGen(object):
 	def trf2vcd(self, trf, vcd, flag=None):
 		tick = 0
 		order = 0
-		sym2val = {}
 		path_trf = os.path.join(self.path, trf)
 		path_pruned_trf = os.path.join(self.path, 'pruned_' + trf)
 		path_vcd = os.path.join(self.path, vcd)
 		pos2sig = {v: k for k, v in self.sig2pos.items()}
 		sig2sym = {v: k for k, v in self.sym2sig.items()}
+		print(pos2sig)
 		sorted_sym2sig_key = sorted(self.sym2sig)
 		sorted_sym2sig = map(lambda x: (x, self.sym2sig[x]), sorted_sym2sig_key)
+		print(list(sorted_sym2sig))
+		sorted_exp_sym2sig = expand_bus(sorted_sym2sig)
 		title = {
 			'date': time.asctime(time.localtime(time.time())),
 			'version': 'ModelSim Version 10.1c',
@@ -775,8 +790,9 @@ class PatternGen(object):
 			trf_content = ft.read()
 			for j in range(vcd_len):
 				sym2val = {}
-				ptn_line = struct.unpack('>' + 'B' * 16, ptn_content[j:j+16])
-				trf_line = struct.unpack('>' + 'B' * 16, trf_content[j:j+16])
+				ptn_line = struct.unpack('>' + 'B' * 16, ptn_content[j*16:(j+1)*16])
+				trf_line = struct.unpack('>' + 'B' * 16, trf_content[j*16:(j+1)*16])
+				# print(ptn_line, trf_line)
 				diff = map(find_diff, trf_line, ptn_line)
 				for i, byte_dict in enumerate(diff):
 					for bit, val in byte_dict.items():
@@ -791,6 +807,7 @@ class PatternGen(object):
 								if re.sub(r'\[\d+\]', '', sig) in key:
 									sym2val[sig2sym[key]] = self.get_bus_val(trf_line, key)
 									break
+				# print(sym2val)
 				for sym, val in sym2val.items():
 					# write report
 					fr.write('Test result differs at line {}, signal {} = {}\n'.format(j+1, self.sym2sig[sym], val))
@@ -853,6 +870,7 @@ class PatternGen(object):
 				write_content(fw, pos2val, base=self.base_1)
 			self.tick += 2
 			self.total_length += 2
+		del gen
 		self.last_pos2val = pos2val
 		for key, flag in self.cmd2flag.items():
 			value = get_sig_value(flag, self.tick)
@@ -875,7 +893,7 @@ class PatternGen(object):
 					self.last_pos2val[cclk_pos] = 0
 				else:
 					self.last_pos2val[cclk_pos] = 1
-				write_content(fw, self.last_pos2val)  #, base=self.base_0)
+				write_content(fw, self.last_pos2val)
 				self.tick += 1
 				self.total_length += 1
 		else:
@@ -922,6 +940,7 @@ class PatternGen(object):
 			self.save_temp()
 			print('Temp file saved')
 			print("Finished!")
+		del fw
 
 	def save_temp(self):
 		path = os.path.join(self.path, "temp")
@@ -955,17 +974,17 @@ def test():
 	# pattern = PatternGen('LX200', 'mul1.tfo', '-legacy')  # Test bus.
 	# pattern = PatternGen('stage1_horizontal_double_0', 'tfo_demo.tfo', '-legacy')  # Test bus.
 	# pattern = PatternGen('test_tri', 'tfo_demo.tfo')  # Test trigate bus.
-	pattern = PatternGen('counter', 'tfo_demo.tfo')  # Test trigate bus.
+	pattern = PatternGen('counter', 'tfo_demo.tfo')  # type: PatternGen
 	# pattern = PatternGen('test_tri_pro', 'tfo_demo.tfo')  # Test trigate bus.
 	# pattern = PatternGen('mul5', 'tfo_demo.tfo')
 
-	# pattern.write()
+	pattern.write()
 	# print(pattern.sym2sig)
 	# print(pattern.cmd2spio)
 	# pattern.save_temp()
-	pattern.load_temp()
+	# pattern.load_temp()
 	# print(pattern.sym2sig)
-	pattern.trf2vcd('counter.trf', 'c3.vcd', flag='bypass')
+	# pattern.trf2vcd('counter.trf', 'c3.vcd', flag='bypass')
 	# pattern.trf2vcd('m8.trf', 'm8.vcd', flag='bypass')
 	# pattern.compare_trf('counter.ptn', 'pruned_counter.trf')
 	# pattern.compare_trf('mul5.ptn', 'm8.trf')
@@ -977,8 +996,11 @@ def test():
 	# from mytools import compare_ptn
 	# compare_ptn('counter/counter.ptn', 'counter/counter.ptn.bak1207')
 
-	from vcd2pic.vcd2pic import vcd2pic
-	vcd2pic('counter/c3.vcd', 'counter/c3.jpg')
+	# from vcd2pic.vcd2pic import vcd2pic
+	# vcd2pic('counter/c3.vcd', 'counter/c3.jpg')
+
+	# a = [('!', 'clk'), ('"', 'ce'), ('#', 'sr'), ('$', 'rs'), ('%', ('ai', 3, 0)), ('&', 'ao[3]'), ("'", 'ao[2]'), ('(', 'ao[1]'), (')', 'ao[0]')]
+	# print(expand_bus(a))
 
 
 if __name__ == "__main__":

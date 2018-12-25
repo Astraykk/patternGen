@@ -38,6 +38,9 @@ def vcd2pic(vcd_location, pic_location):
             line=each_line
             while re.search(r'^#',line):
                 time=re.search(r'\d{1,3}',line).group()
+                # print(time, type(time))
+                # if int(time) > 1000:
+                #     break
                 line = vcd.readline()
                 if line=='$dumpvars\n':
                     waveout = input + output
@@ -73,7 +76,7 @@ def vcd2pic(vcd_location, pic_location):
                     waveout[i]['state'].append(2)
                 if b_wave==1 and now_wave==0:
                     waveout[i]['state'].append(3)
-
+    print(waveout)
     green = (0, 255, 0)
     tint_green = (0, 80, 0)
     tint_write = (255, 255, 255)
@@ -152,8 +155,9 @@ def vcd2pic(vcd_location, pic_location):
                 one_one((j+2) * unit_width, (i+1) * unit_height,unit_width,unit_height)
             elif waveout[i]['state'][j] == 3:
                 one_zero((j+2) * unit_width, (i+1) * unit_height,unit_width,unit_height)
-    image.show()
+    # image.show()
     image.save(pic_location, 'jpeg')
+    print(image.mode, image.size)
 
 
 if __name__ == '__main__':
