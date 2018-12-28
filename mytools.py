@@ -1,6 +1,8 @@
 #!/usr/bin/python3
+# -*- coding:utf-8 -*-
 import re
 import sys
+import time
 
 
 def merge_ptn(ptn, *ptn_tuple):
@@ -57,6 +59,7 @@ class VcdFile(object):
 
 	path = ''
 	module_name = ''
+	timescale = 1
 	total_length = 0
 	sym2sig = {}
 	entri_dict = {}
@@ -65,39 +68,32 @@ class VcdFile(object):
 	vcd_info = []
 	# vcd_info = [
 	# 	{
-	# 		'symbol': '!', 'sig': 'clk', 'type': 'single', 'wave_info': [0, 1, 0, 1],
+	# 		'symbol': '!', 'sig': 'clk', 'type': 'wire', 'wave_info': [0, 1, 0, 1], 'width': 1,
 	# 		'wave_state': [ZERO_ZERO, ZERO_ONE, ONE_ZERO, ZERO_ONE]
 	# 	},
 	# 	{
-	# 		'symbol': '"', 'sig': 'a', 'type': 'bus', 'wave_info': ['0000', '0001', '0001', '0010', '0010', '0010', '0010'],
+	# 		'symbol': '"', 'sig': 'a', 'type': 'reg', width: 4,
+	#       'wave_info': ['0000', '0001', '0001', '0010', '0010', '0010', '0010'],
 	# 		'wave_state': [BUS_SINGLE, BUS_START, BUS_END, BUS_START, BUS_BODY, BUS_BODY, BUS_END]
 	# 	}
 	# ]
 
 	def __init__(self, path, period='1ps'):
+		self.vcd_info = []
 		self.path = path
 		self.period = period
-		# self.get_header()
-		self.get_vcd_info()
-
-	def merge(self, *vcd_files):
-		"""
-		Merge multiple vcd files.
-		:param vcd_ref: a VcdFile object
-		:return: 
-		"""
-		for vcd_file in vcd_files:
-			pass
+		self.get_header()
 
 	def get_header(self):
-		self.header['timescale'] = int(timescale_op(self.period) / timescale_op('1ps'))
+		self.timescale = int(timescale_op(self.period) / timescale_op('1ps'))
+		# TODO: find timescale in vcd file
 
 	def get_vcd_info(self):
-		tick = 0
-		timescale = int(timescale_op(self.period) / timescale_op(self.header['timescale']))
-		regex1 = re.compile(r'\$var\s+\w+\s+\d+\s+(.)\s+(\w+)\s*(\[(\d+)(:?)(\d*)\])?\s+\$end', re.I)
-		# regex2 = re.compile(r'\$enddefinitions \$end')
-		regex2 = re.compile(r'#(\d+)')  # match period
+		vcd_tick = 0
+		# timescale = int(timescale_op(self.period) / timescale_op(self.header['timescale']))
+		regex1 = re.compile(r'\$var\s+(\w+)\s+(\d+)\s+(.)\s+(\w+)\s*(\[(\d+)(:?)(\d*)\])?\s+\$end', re.I)
+		# $var 'type' 'width' 'symbol' 'signal' $end
+		regex2 = re.compile(r'#(\d+)')                # match period
 		regex3 = re.compile(r'b?([0|1|x|z]+)\s*(.)')  # match testbench
 		with open(self.path, "r") as f:
 			content = f.read()  # TODO: match signal definitions here.
@@ -131,49 +127,54 @@ class VcdFile(object):
 					# 	if value == 'z':
 					# 		value = z_val
 					# 	pos2val[self.sig2pos.setdefault(self.sym2sig[key], None)] = value
-					self.vcd_info[i]['wave_info'].append(value)
+					if vcd_tick + 1 == len(self.vcd_info[i]['wave_info']):
+						self.vcd_info[i]['wave_info'][-1] = value
+					else:
+						self.vcd_info[i]['wave_info'].append(value)
 					continue
 
 				# match next tick; write last tick to file
 				m2 = regex2.match(line)
 				if m2:
 					vcd_tick_raw = int(m2.group(1))
-					if vcd_tick_raw == 0 or vcd_tick_raw % timescale:  # small delay, skip the write operation
+					if vcd_tick_raw == 0 or vcd_tick_raw % self.timescale:  # small delay, skip the write operation
 						continue
 					else:
-						vcd_tick = int(vcd_tick_raw / timescale)
+						vcd_tick = int(vcd_tick_raw / self.timescale)
 					# if tick < vcd_tick:
 					for sig_dict in self.vcd_info:
+						# print(sig_dict)
 						last_val = sig_dict['wave_info'][-1]
 						sig_dict['wave_info'] += [last_val] * (vcd_tick-len(sig_dict['wave_info']))
 					continue
 
 				m = regex1.match(line)
 				if m:
-					sym = m.group(1)
-					if m.group(5):  # Combined bus
-						msb = int(m.group(4))
-						lsb = int(m.group(6))
-						sig_type = 'bus'
-						sig = m.group(2)
+					type = m.group(1)
+					width = int(m.group(2))  # Warning: which type?
+					sym = m.group(3)
+					if m.group(7):  # Combined bus
+						msb = int(m.group(6))
+						lsb = int(m.group(8))
+						sig = m.group(4)
 						self.sym2sig[sym] = (sig, msb, lsb)  # symbol => (bus, MSB, LSB)
-					elif m.group(3):
-						sig = m.group(2) + m.group(3)
-						sig_type = 'single'
+					elif m.group(5):
+						sig = m.group(4) + m.group(5)
 						self.sym2sig[sym] = sig
-					# elif m.group(2) not in self.sig2pos.keys():
-					# 	continue
 					else:
-						sig = m.group(2)
-						sig_type = 'single'
+						sig = m.group(4)
 						self.sym2sig[sym] = sig
-					sig_dict = {'symbol': sym, 'signal': sig, 'type': sig_type, 'wave_info': [], 'wave_state': []}
+					sig_dict = {'symbol': sym, 'signal': sig, 'type': type, 'width': width, 'wave_info': [], 'wave_state': []}
 					self.vcd_info.append(sig_dict)
 					# print(self.vcd_info, len(self.vcd_info))
 					continue
 				if re.search(r'\$dumpoff', line):
 					break
-		print(f)
+			# print(vcd_tick)
+			for sig_dict in self.vcd_info:
+				last_val = sig_dict['wave_info'][-1]
+				sig_dict['wave_info'] += [last_val] * (vcd_tick + 1 - len(sig_dict['wave_info']))
+				# print(len(sig_dict['wave_info']))
 
 	def get_wave_info(self):
 		pass
@@ -185,37 +186,90 @@ class VcdFile(object):
 		pass
 
 	def gen_vcd(self, path):
+		self.header['date'] = time.asctime(time.localtime(time.time()))
 		with open(path, 'w') as f:
 			for header in ['date', 'version', 'timescale']:
 				f.write('${}\n\t{}\n$end\n'.format(header, self.header[header]))
 			f.write('$scope module {}_tb $end\n'.format(self.module_name))
+			for sig_dict in self.vcd_info:
+				f.write('$var {} {} {} {} $end\n'.format(sig_dict['type'], sig_dict['width'], sig_dict['symbol'], sig_dict['signal']))
+			f.write('$upscope $end\n$enddefinitions $end\n')
+			f.write('#0\n$dumpvars\n')
+			content = ''
+			for sig_dict in self.vcd_info:
+				content += '{}{}\n'.format(sig_dict['wave_info'][0], sig_dict['symbol'])
+			f.write(content + '$end\n')
+			for i in range(1, len(self.vcd_info[0]['wave_info'])):
+				content = '#{}\n'.format(i)
+				for sig_dict in self.vcd_info:
+					wave_info = sig_dict['wave_info']
+					# print(wave_info, sig_dict['symbol'], len(wave_info))
+					if wave_info[i] != wave_info[i-1]:
+						content += '{}{}\n'.format(wave_info[i], sig_dict['symbol'])
+				f.write(content)
+			f.write('$dumpoff\n')
 
 
-def vcd_merge(vcd_ref, vcd_add, period=1):
+def vcd_merge(vcd_ref, vcd_file, path='.', compare=True):
 	"""
-	Extract signal definition; assign symbol; merge file.
-	:param vcd_ref:
-	:param vcd:
-	:return:
+	Merge vcd files.
 	"""
-	tick_ref = -1
-	tick_add = -1
-	x_val = 0  # default value of x
-	z_val = 0
-	pos2val = {}  # {position(bit): signal(1|0|z|x)}
-	regex1 = re.compile(r'\$var\s+\w+\s+\d+\s+(.)\s+(\w+)\s*(\[(\d+)(:?)(\d*)\])?\s+\$end', re.I)
-	regex2 = re.compile(r'#(\d+)')  # match period
-	regex3 = re.compile(r'b?([0|1|x|z]+)\s*(.)')  # match testbench
-	regex4 = re.compile(r'\$enddefinitions \$end')
-	with open(vcd_ref, "r") as fr, open(vcd_add, 'r') as fa, open('vcd_final.vcd', 'w') as ff:
-		pass
+	def compare_value(x, y):
+		return (x == y or x == 'x' or x == 'z') and '0' or '1'
+
+	def and_value(x, y):
+		return (x == '0' and y == '0') and '0' or '1'
+
+	vcd_m = VcdFile(path, vcd_ref.period)
+	for sig_dict in vcd_ref.vcd_info[:]:
+		sig = sig_dict['signal'] + '_ref'
+		# print(sig)
+		new_dict = sig_dict.copy()
+		# print(new_dict)
+		new_dict['signal'] = sig
+		# print(new_dict)
+		# print(sig_dict)
+		vcd_m.vcd_info.append(new_dict)
+		vcd_m.sym2sig[sig_dict['symbol']] = sig
+	offset = len(vcd_ref.vcd_info)
+	for sig_dict in vcd_file.vcd_info[:]:
+		sym = chr(ord(sig_dict['symbol']) + offset)
+		new_dict = sig_dict.copy()
+		new_dict['symbol'] = sym
+		vcd_m.sym2sig[sym] = new_dict['signal']
+		vcd_m.vcd_info.append(new_dict)
+	# print(vcd_merge.vcd_info)
+	if compare:  # generate error signal
+		sym = chr(len(vcd_m.vcd_info) + 33)
+		sig = 'error'  # TODO: check signal name clash
+		wave_info = ['0'] * len(vcd_ref.vcd_info[0]['wave_info'])
+		for i in range(len(vcd_ref.vcd_info)):
+			ref_dict = vcd_ref.vcd_info[i]['wave_info']
+			act_dict = vcd_file.vcd_info[i]['wave_info']
+			compare_result = map(compare_value, ref_dict, act_dict)
+			wave_info = map(and_value, wave_info, compare_result)
+		error_dict = {'symbol': sym, 'signal': sig, 'type': 'wire', 'width': 1, 'wave_info': list(wave_info), 'wave_state': []}
+		vcd_m.sym2sig[sym] = sig
+		vcd_m.vcd_info.append(error_dict)
+	return vcd_m
 
 
 if __name__ == "__main__":
 	# compare_ptn('counter/counter.ptn', 'counter/counter.ptn.bak1207')
-	# vcd = VcdFile('pin_test/pin_test.vcd', period='1ps')
-	vcd = VcdFile('counter/counter.vcd', period='1ps')
+	vcd = VcdFile('pin_test/pin_test.vcd', period='1ps')
+	# vcd = VcdFile('counter/counter.vcd', period='1ps')
+	vcd.get_vcd_info()
+	vcd.gen_vcd('pin_test/p2.vcd')
+
+	# test vcd_merge
+	# vcd1 = VcdFile('pin_test/p1.vcd', period='1ps')
+	# print('vcd1 = ', vcd1.vcd_info)
+	# vcd1.get_vcd_info()
+	# vcd2 = vcd_merge(vcd, vcd1)
+	# print(vcd2.sym2sig)
+	# vcd2.gen_vcd('pin_test/p1_merge.vcd')
+
 	# print(vcd.sym2sig)
 	# print(vcd.vcd_info)
 	# print(sys.getsizeof(vcd.vcd_info[0]['wave_info']))
-	print(vcd.module_name)
+
