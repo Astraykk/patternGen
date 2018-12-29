@@ -3,6 +3,7 @@
 import re
 import sys
 import time
+import os
 
 
 def merge_ptn(ptn, *ptn_tuple):
@@ -94,7 +95,7 @@ class VcdFile(object):
 		regex1 = re.compile(r'\$var\s+(\w+)\s+(\d+)\s+(.)\s+(\w+)\s*(\[(\d+)(:?)(\d*)\])?\s+\$end', re.I)
 		# $var 'type' 'width' 'symbol' 'signal' $end
 		regex2 = re.compile(r'#(\d+)')                # match period
-		regex3 = re.compile(r'b?([0|1|x|z]+)\s*(.)')  # match testbench
+		regex3 = re.compile(r'(b?)([0|1|x|z]+)\s*(.)')  # match testbench
 		with open(self.path, "r") as f:
 			content = f.read()  # TODO: match signal definitions here.
 			self.module_name = re.findall(r'\$scope module (\w+) \$end', content)[0]
@@ -103,9 +104,9 @@ class VcdFile(object):
 				# print(self.vcd_info)
 				m3 = regex3.match(line)
 				if m3:
-					value, key = m3.group(1, 2)
+					base, value, key = m3.groups()
 					# print(key, value)
-					i = ord(key) - 33  # ASCII value
+					i = ord(key) - 33  # ASCII value, start from '!'(33)
 					if key not in self.sym2sig:
 						continue
 					if isinstance(self.sym2sig[key], tuple):
@@ -113,7 +114,7 @@ class VcdFile(object):
 						bus_width = bus_ele[1] - bus_ele[2]
 						# print("{} {}".format(bus_width, bus_ele))
 						# bus_signal = bus_width > 0 and 1 or -1
-						value = '0' * (abs(bus_width) + 1 - len(value)) + value  # Fill 0 on the left
+						value = base + '0' * (abs(bus_width) + 1 - len(value)) + value  # Fill 0 on the left
 						# for i in range(0, bus_width + bus_signal, bus_signal):
 						# 	bus_sig = '{}[{}]'.format(bus_ele[0], str(bus_ele[1] - i))
 						# 	# print("tick={} {} {}".format(tick, bus_sig, self.sig2pos))
@@ -219,7 +220,7 @@ def vcd_merge(vcd_ref, vcd_file, path='.', compare=True):
 
 	def and_value(x, y):
 		return (x == '0' and y == '0') and '0' or '1'
-
+	fr = open(os.path.splitext(path)[0] + '.rpt', 'w')
 	vcd_m = VcdFile(path, vcd_ref.period)
 	for sig_dict in vcd_ref.vcd_info[:]:
 		sig = sig_dict['signal'] + '_ref'
@@ -243,14 +244,29 @@ def vcd_merge(vcd_ref, vcd_file, path='.', compare=True):
 		sym = chr(len(vcd_m.vcd_info) + 33)
 		sig = 'error'  # TODO: check signal name clash
 		wave_info = ['0'] * len(vcd_ref.vcd_info[0]['wave_info'])
-		for i in range(len(vcd_ref.vcd_info)):
-			ref_dict = vcd_ref.vcd_info[i]['wave_info']
-			act_dict = vcd_file.vcd_info[i]['wave_info']
-			compare_result = map(compare_value, ref_dict, act_dict)
-			wave_info = map(and_value, wave_info, compare_result)
-		error_dict = {'symbol': sym, 'signal': sig, 'type': 'wire', 'width': 1, 'wave_info': list(wave_info), 'wave_state': []}
+		# for i in range(len(vcd_ref.vcd_info)):
+		# 	ref_dict = vcd_ref.vcd_info[i]['wave_info']
+		# 	act_dict = vcd_file.vcd_info[i]['wave_info']
+		# 	compare_result = list(map(compare_value, ref_dict, act_dict))
+		# 	wave_info = list(map(and_value, wave_info, compare_result))
+		print(len(vcd_ref.vcd_info))
+		for i in range(len(vcd_ref.vcd_info[0]['wave_info'])):  # tick
+			for j in range(len(vcd_ref.vcd_info)):  # signal
+				print(i, j)
+				x = vcd_ref.vcd_info[j]['wave_info'][i]
+				y = vcd_file.vcd_info[j]['wave_info'][i]
+				sig_ref = vcd_ref.vcd_info[j]['signal']
+				sig_act = vcd_file.vcd_info[j]['signal']
+				if x != 'x' and x != 'z' and x != y:
+					fr.write('Line {}: {}_ref = {}, {} = {}\n'.format(i, sig_ref, x, sig_act, y))  # report
+					wave_info[i] = '1'  # generate wave info for error_dict
+		print(wave_info)
+		error_dict = {
+			'symbol': sym, 'signal': sig, 'type': 'wire', 'width': 1, 'wave_info': list(wave_info), 'wave_state': []
+		}
 		vcd_m.sym2sig[sym] = sig
 		vcd_m.vcd_info.append(error_dict)
+	fr.close()
 	return vcd_m
 
 
@@ -258,16 +274,18 @@ if __name__ == "__main__":
 	# compare_ptn('counter/counter.ptn', 'counter/counter.ptn.bak1207')
 	vcd = VcdFile('pin_test/pin_test.vcd', period='1ps')
 	# vcd = VcdFile('counter/counter.vcd', period='1ps')
+	# vcd = VcdFile('mul5/mul5.vcd', period='1us')
 	vcd.get_vcd_info()
-	vcd.gen_vcd('pin_test/p2.vcd')
+	# vcd.gen_vcd('pin_test/p2.vcd')
+	# vcd.gen_vcd('mul5/m9.vcd')
 
 	# test vcd_merge
-	# vcd1 = VcdFile('pin_test/p1.vcd', period='1ps')
-	# print('vcd1 = ', vcd1.vcd_info)
-	# vcd1.get_vcd_info()
-	# vcd2 = vcd_merge(vcd, vcd1)
-	# print(vcd2.sym2sig)
-	# vcd2.gen_vcd('pin_test/p1_merge.vcd')
+	vcd1 = VcdFile('pin_test/p1.vcd', period='1ps')
+	print('vcd1 = ', vcd1.vcd_info)
+	vcd1.get_vcd_info()
+	vcd2 = vcd_merge(vcd, vcd1)
+	print(vcd2.sym2sig)
+	vcd2.gen_vcd('pin_test/p1_merge.vcd')
 
 	# print(vcd.sym2sig)
 	# print(vcd.vcd_info)
