@@ -1,0 +1,3 @@
+Line 8: tri_inout_ref = 0, tri_inout = z
+Line 9: tri_inout_ref = 1, tri_inout = 0
+Line 10: tri_inout_ref = 0, tri_inout = 1

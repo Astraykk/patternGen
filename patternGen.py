@@ -7,6 +7,7 @@ Summary:
 
 """
 import re, sys, os, struct
+import json
 import bs4
 import time
 from importlib import util
@@ -691,18 +692,16 @@ class PatternGen(object):
 		path_vcd = os.path.join(self.path, vcd)
 		pos2sig = {v: k for k, v in self.sig2pos.items()}
 		sig2sym = {v: k for k, v in self.sym2sig.items()}
-		# print(pos2sig)
 		sorted_sym2sig_key = sorted(self.sym2sig)
-		sorted_sym2sig = map(lambda x: (x, self.sym2sig[x]), sorted_sym2sig_key)
-		sorted_sym2sig = list(sorted_sym2sig)
-		sorted_exp_sym2sig = expand_bus(sorted_sym2sig)
+		sorted_sym2sig = list(map(lambda x: (x, self.sym2sig[x]), sorted_sym2sig_key))
+		sorted_exp_sym2sig = expand_bus(sorted_sym2sig)  # for simple vcd2pic (expand bus)
 		title = {
 			'date': time.asctime(time.localtime(time.time())),
 			'version': 'ModelSim Version 10.1c',
 			'timescale': '1us'
 		}
 		# Prepare param for trf abandon
-		if flag == 'bypass':   # a fixed value is given, to bypass the writing of PTN
+		if flag == 'bypass':   # load length of vcd and bs from json file
 			self.load_temp()
 		vcd_len = self.trf_param['vcd_len']
 		bs_len = self.trf_param['bs_len']
@@ -945,17 +944,22 @@ class PatternGen(object):
 		del fw
 
 	def save_temp(self):
-		path = os.path.join(self.path, "temp")
-		ft = open(path, "w+")
-		# ft.write('\n'.join(['%s = %s' % item for item in self.__dict__.items()]))
-		ft.write('trf_param = %s\n' % str(self.trf_param))
-		ft.close()
+		path = os.path.join(self.path, "temp.json")
+		with open(path, "w+") as f:
+			json.dump(self.trf_param, f)
+		# ft = open(path, "w+")
+		# # ft.write('\n'.join(['%s = %s' % item for item in self.__dict__.items()]))
+		# ft.write('trf_param = %s\n' % str(self.trf_param))
+		# ft.close()
 
 	def load_temp(self):
-		path = os.path.join(self.path, "temp")
-		fp = open(path, 'r')
-		for line in fp.readlines():
-			exec('self.' + line)
+		path = os.path.join(self.path, "temp.json")
+		with open(path, "r") as f:
+			self.trf_param = json.load(f)
+			print(self.trf_param)
+		# fp = open(path, 'r')
+		# for line in fp.readlines():
+		# 	exec('self.' + line)
 		# print(self.trf_param)
 
 
@@ -981,13 +985,13 @@ def test():
 	# pattern = PatternGen('mul5', 'tfo_demo.tfo')
 	pattern = PatternGen('mul1', 'tfo_demo.tfo')
 
-
-	# pattern.write()
+	pattern.write()
 	# print(pattern.sym2sig)
 	# print(pattern.cmd2spio)
 	# pattern.save_temp()
 	# pattern.load_temp()
 	# print(pattern.sym2sig)
+	# pattern.trf2vcd('pin_test.trf', 'p4.vcd', flag='bypass')
 	# pattern.trf2vcd('counter.trf', 'c3.vcd', flag='bypass')
 	# pattern.trf2vcd('m8.trf', 'm8.vcd', flag='bypass')
 	pattern.trf2vcd('mul1_r.trf', 'mul1_r.vcd', flag='bypass')
@@ -1004,7 +1008,11 @@ def test():
 	# from vcd2pic.vcd2pic import vcd2pic
 	# vcd2pic('counter/c3.vcd', 'counter/c3.jpg')
 
-	# a = [('!', 'clk'), ('"', 'ce'), ('#', 'sr'), ('$', 'rs'), ('%', ('ai', 3, 0)), ('&', 'ao[3]'), ("'", 'ao[2]'), ('(', 'ao[1]'), (')', 'ao[0]')]
+	# a = [
+	# 	('!', 'clk'), ('"', 'ce'), ('#', 'sr'), ('$', 'rs'),
+	# 	('%', ('ai', 3, 0)), ('&', 'ao[3]'), ("'", 'ao[2]'),
+	# 	('(', 'ao[1]'), (')', 'ao[0]')
+	# ]
 	# print(expand_bus(a))
 
 

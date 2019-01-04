@@ -4,6 +4,7 @@ import re
 import sys
 import time
 import os
+import json
 
 
 def merge_ptn(ptn, *ptn_tuple):
@@ -45,6 +46,17 @@ def timescale_op(ts):
 	else:
 		ts_int = 1
 	return ts_int
+
+
+def test_json(path):
+	a = [1, 2, 3]
+	b = {1: 1, 2: 2, 3: 3}
+	d = dict(a=a, b=b)
+	print(d)
+	with open(path, 'r') as f:
+		# json.dump(d, f)
+		data2 = json.load(f)
+		print(data2)
 
 
 class VcdFile(object):
@@ -244,15 +256,15 @@ def vcd_merge(vcd_ref, vcd_file, path='.', compare=True):
 		sym = chr(len(vcd_m.vcd_info) + 33)
 		sig = 'error'  # TODO: check signal name clash
 		wave_info = ['0'] * len(vcd_ref.vcd_info[0]['wave_info'])
-		# for i in range(len(vcd_ref.vcd_info)):
+		# for i in range(len(vcd_ref.vcd_info)):  # directly compare 2 lists
 		# 	ref_dict = vcd_ref.vcd_info[i]['wave_info']
 		# 	act_dict = vcd_file.vcd_info[i]['wave_info']
 		# 	compare_result = list(map(compare_value, ref_dict, act_dict))
 		# 	wave_info = list(map(and_value, wave_info, compare_result))
-		print(len(vcd_ref.vcd_info))
+		# print(len(vcd_ref.vcd_info))
 		for i in range(len(vcd_ref.vcd_info[0]['wave_info'])):  # tick
 			for j in range(len(vcd_ref.vcd_info)):  # signal
-				print(i, j)
+				# print(i, j)
 				x = vcd_ref.vcd_info[j]['wave_info'][i]
 				y = vcd_file.vcd_info[j]['wave_info'][i]
 				sig_ref = vcd_ref.vcd_info[j]['signal']
@@ -260,7 +272,7 @@ def vcd_merge(vcd_ref, vcd_file, path='.', compare=True):
 				if x != 'x' and x != 'z' and x != y:
 					fr.write('Line {}: {}_ref = {}, {} = {}\n'.format(i, sig_ref, x, sig_act, y))  # report
 					wave_info[i] = '1'  # generate wave info for error_dict
-		print(wave_info)
+		# print(wave_info)
 		error_dict = {
 			'symbol': sym, 'signal': sig, 'type': 'wire', 'width': 1, 'wave_info': list(wave_info), 'wave_state': []
 		}
@@ -271,23 +283,23 @@ def vcd_merge(vcd_ref, vcd_file, path='.', compare=True):
 
 
 if __name__ == "__main__":
-	# compare_ptn('counter/counter.ptn', 'counter/counter.ptn.bak1207')
-	vcd = VcdFile('pin_test/pin_test.vcd', period='1ps')
-	# vcd = VcdFile('counter/counter.vcd', period='1ps')
-	# vcd = VcdFile('mul5/mul5.vcd', period='1us')
-	vcd.get_vcd_info()
-	# vcd.gen_vcd('pin_test/p2.vcd')
-	# vcd.gen_vcd('mul5/m9.vcd')
+	'''vcd test'''
+	# # compare_ptn('counter/counter.ptn', 'counter/counter.ptn.bak1207')
+	# vcd = VcdFile('pin_test/pin_test.vcd', period='1ps')
+	# # vcd = VcdFile('counter/counter.vcd', period='1ps')
+	# # vcd = VcdFile('mul5/mul5.vcd', period='1us')
+	# vcd.get_vcd_info()
+	# # vcd.gen_vcd('pin_test/p3.vcd')
+	# # vcd.gen_vcd('mul5/m9.vcd')
+	#
+	# # test vcd_merge
+	# vcd1 = VcdFile('pin_test/p2.vcd', period='1ps')
+	# print('vcd1 = ', vcd1.vcd_info)
+	# vcd1.get_vcd_info()
+	# vcd2 = vcd_merge(vcd, vcd1, 'pin_test/p2_merge.vcd')
+	# print(vcd2.sym2sig)
+	# # vcd2.gen_vcd('pin_test/p1_merge.vcd')
+	# vcd2.gen_vcd(vcd2.path)
 
-	# test vcd_merge
-	vcd1 = VcdFile('pin_test/p1.vcd', period='1ps')
-	print('vcd1 = ', vcd1.vcd_info)
-	vcd1.get_vcd_info()
-	vcd2 = vcd_merge(vcd, vcd1)
-	print(vcd2.sym2sig)
-	vcd2.gen_vcd('pin_test/p1_merge.vcd')
-
-	# print(vcd.sym2sig)
-	# print(vcd.vcd_info)
-	# print(sys.getsizeof(vcd.vcd_info[0]['wave_info']))
-
+	'''json test'''
+	test_json('temp.json')

@@ -1,4 +1,4 @@
-<TFO name = "tfo_demo" path = "." comment = "1" author = "xy" date = "2018/04/08">
+<TFO name = "tfo_demo" path = "." comment = "batch test" author = "xy" date = "2018/04/08">
 	<LBF type = "LB0101">
 	<LIST>
 		<DUT name = "1" type = "LX200">
