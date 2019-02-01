@@ -24,10 +24,14 @@ PROJECT_PATH = ''  # /mysite/uploads/project/
 INCLUDE_PATH = 'include'  # /mysite/tools/include/
 
 # define operation code here
-MASK_OP = 0x1
-BITSTREAM_OP = 0x2
-TESTBENCH_OP = 0x4
-END_OP = 0x80
+# MASK_OP = 0x1
+# BITSTREAM_OP = 0x2
+# TESTBENCH_OP = 0x4
+# END_OP = 0x80
+MASK_OP = b'\x01'
+BITSTREAM_OP = b'\x02'
+TESTBENCH_OP = b'\x04'
+END_OP = b'\x80'
 # enddefine
 
 # define other global constants
@@ -92,15 +96,21 @@ def write_content(fw, pos_dict, base=[0]*16):
 			numbers[key[0] - 1] += 2 ** key[1] * int(value)
 		# numbers[key[0]-1] += int(value) << key[1]  # shift operation is faster?
 	for num in numbers:
-		# print(num)
-		fw.write(struct.pack('B', num))
+		# fw.write(struct.pack('B', num))
+		if num:
+			content = struct.pack('B', num)
+		else:
+			content = b'\x00'
+		fw.write(content)
 
 
 def write_operator(fw, operator, length):
-	fw.write(struct.pack('B', operator))  # 1 byte
-	for i in range(11):  # length takes 4 bytes
-		fw.write(struct.pack('B', 0xff))
-	fw.write(struct.pack('>I', length))  # 4 bytes, big-endian
+	fw.write(operator + b'\xff' * 11 + struct.pack('>I', length))
+	# fw.write(operator)  # 1 byte
+	# # for i in range(11):  # length takes 4 bytes
+	# # 	fw.write(struct.pack('B', 0xff))
+	# fw.write(b'\xff' * 11)
+	# fw.write(struct.pack('>I', length))  # 4 bytes, big-endian
 
 
 def write_tb_op(fw, tb_counter):
@@ -271,6 +281,7 @@ class PatternGen(object):
 
 	def __init__(self, path='.', tfo_file='tfo_demo', command='-normal', file_list=()):
 		self.project_name = path
+		print('Creating instance for project {}\n'.format(path))
 		self.path = os.path.join(DIRECTORY, path)
 		# self.command = command.split('-')          # Get command: -normal, -legacy, ...
 		self.config['command'] = command.split('-')  # Get command: -normal, -legacy, ...
@@ -702,12 +713,13 @@ class PatternGen(object):
 		}
 		# Prepare param for trf abandon
 		if flag == 'bypass':   # load length of vcd and bs from json file
+			print('Load temp file')
 			self.load_temp()
 		vcd_len = self.trf_param['vcd_len']
 		bs_len = self.trf_param['bs_len']
 		x1 = 2048 - (bs_len + 3) % 2048 - 3
 		if vcd_len <= 2048:
-			end_tick = vcd_len - 1
+			end_tick = vcd_len + 1
 		else:
 			end_tick = 2049 + vcd_len - x1
 
@@ -915,6 +927,7 @@ class PatternGen(object):
 
 	@timer
 	def write(self):
+		print('\nWriting PTN file ...')
 		path = os.path.join(self.path, self.file_list['PTN'])
 		with open(path, 'wb+') as fw:
 			write_mask(fw, self.cmd2pos, self.cmd2spio)
@@ -939,7 +952,7 @@ class PatternGen(object):
 			self.completion(fw)
 			print('2048-completion complete')
 			self.save_temp()
-			print('Temp file saved')
+			print('Save Temp.json file')
 			print("Finished!")
 		del fw
 
@@ -967,10 +980,12 @@ class PatternGen(object):
 
 
 def batch_build(path, tfo):
+	print('Start batch build')
 	file_list_list = tfo_parser(path, tfo)
 	for project_path, file_list in file_list_list.items():
 		pattern = PatternGen(os.path.join(path, project_path), file_list=file_list)
 		pattern.write()
+	print('Batch build finished')
 
 
 # @timer
@@ -982,8 +997,8 @@ def test():
 	# pattern = PatternGen('test_tri', 'tfo_demo.tfo')  # Test trigate bus.
 	# pattern = PatternGen('counter', 'tfo_demo.tfo')  # type: PatternGen
 	# pattern = PatternGen('test_tri_pro', 'tfo_demo.tfo')  # Test trigate bus.
-	# pattern = PatternGen('mul5', 'tfo_demo.tfo')
-	pattern = PatternGen('mul1', 'tfo_demo.tfo')
+	pattern = PatternGen('mul5', 'tfo_demo.tfo')
+	# pattern = PatternGen('mul1', 'tfo_demo.tfo')
 
 	pattern.write()
 	# print(pattern.sym2sig)
@@ -993,8 +1008,8 @@ def test():
 	# print(pattern.sym2sig)
 	# pattern.trf2vcd('pin_test.trf', 'p4.vcd', flag='bypass')
 	# pattern.trf2vcd('counter.trf', 'c3.vcd', flag='bypass')
-	# pattern.trf2vcd('m8.trf', 'm8.vcd', flag='bypass')
-	pattern.trf2vcd('mul1_r.trf', 'mul1_r.vcd', flag='bypass')
+	# pattern.trf2vcd('m8.trf', 'm11.vcd', flag='bypass')
+	# pattern.trf2vcd('mul1_r.trf', 'mul1_r.vcd', flag='bypass')
 	# pattern.compare_trf('counter.ptn', 'pruned_counter.trf')
 	# pattern.compare_trf('mul5.ptn', 'm8.trf')
 

@@ -1,0 +1,11 @@
+<ITEM name = "stage3_alldir_alllinetype_1">
+	<POWER>
+	</POWER>
+	<DC>
+	</DC>
+	<DIGITAL>
+		<CYCLE period = "1"/>
+	<DIGITAL>
+	<ANALOG>
+	</ANALOG>
+</ITEM>

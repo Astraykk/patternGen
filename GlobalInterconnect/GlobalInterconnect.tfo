@@ -1,0 +1,27 @@
+<TFO name = "GlobalInterconnect" path = "GlobalInterconnect" comment = "GlobalInterconnect" author = "WangJian" date = "2019/01/28">
+	<LBF type = "LB0101">
+	<LIST>
+		<DUT name = "1" type = "LX200">
+		<TEST name = "stage3_alldir_alllinetype_1" path = "."> 
+			<DWM name = "SelectMAP32"/>
+			<ITM name = "Stage3_allDir_allLineType_1"/>
+			<PIO name = "Stage3_allDir_allLineType_1"/>
+			<BIT name = "stage3_alldir_alllinetype_1"/>
+			<VCD name = "Stage3_allDir_allLineType_1"/>
+			<UCF name = "Stage3_allDir_allLineType_1"/>
+			<RPT name = "Stage3_allDir_allLineType_1"/>
+			<ATF name = "Stage3_allDir_allLineType_1" type = "" compare = "yes"/>
+		</TEST>
+		<TEST name = "stage3_alldir_alllinetype_3" path = "."> 
+			<DWM name = "SelectMAP32"/>
+			<ITM name = "Stage3_allDir_allLineType_3"/>
+			<PIO name = "Stage3_allDir_allLineType_3"/>
+			<BIT name = "stage3_alldir_alllinetype_3"/>
+			<VCD name = "Stage3_allDir_allLineType_3"/>
+			<UCF name = "Stage3_allDir_allLineType_3"/>
+			<RPT name = "Stage3_allDir_allLineType_3"/>
+			<ATF name = "Stage3_allDir_allLineType_3"/>
+			<WAV name = "Stage3_allDir_allLineType_3" type = "" compare = "yes"/>
+		</TEST>
+	</LIST>
+</TFO>
