@@ -1,0 +1,42 @@
+$date
+	Mon Jan 21 23:07:35 2019
+$end
+$version
+	ModelSim Version 10.1c
+$end
+$timescale
+	1ps
+$end
+$scope module _tb $end
+$var wire 1 ! error $end
+$var reg 1 " clk_ref $end
+$var reg 1 # rst_n_ref $end
+$var wire 1 $ out[3]_ref $end
+$var wire 1 % out[2]_ref $end
+$var wire 1 & out[1]_ref $end
+$var wire 1 ' out[0]_ref $end
+$var reg 1 ' clk $end
+$var reg 1 ( rst_n $end
+$var wire 1 ) out[3] $end
+$var wire 1 * out[2] $end
+$var wire 1 + out[1] $end
+$var wire 1 , out[0] $end
+$upscope $end
+$enddefinitions $end
+#0
+$dumpvars
+0!
+1"
+1#
+1$
+0%
+0&
+1'
+1'
+1(
+1)
+0*
+0+
+1,
+$end
+$dumpoff

@@ -1033,3 +1033,6 @@ if __name__ == "__main__":
 		pattern = PatternGen(sys.argv[1], sys.argv[2])
 		pattern.write()
 		pattern.trf2vcd(sys.argv[3], sys.argv[4], flag='bypass')
+	elif len(sys.argv) == 6:
+		pattern = PatternGen(sys.argv[1], sys.argv[2])
+		pattern.trf2vcd(sys.argv[3], sys.argv[4], flag='bypass')

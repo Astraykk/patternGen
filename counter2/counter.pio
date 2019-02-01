@@ -1,0 +1,6 @@
+NET "out[3]" DIR = output;
+NET "out[2]" DIR = output;
+NET "out[1]" DIR = output;
+NET "out[0]" DIR = output;
+NET "clk" DIR = input;
+NET "rst_n" DIR = input;

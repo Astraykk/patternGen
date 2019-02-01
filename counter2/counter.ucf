@@ -1,0 +1,16 @@
+
+# PlanAhead Generated physical constraints 
+
+NET "out[3]" LOC = D22;
+NET "out[2]" LOC = C22;
+NET "out[1]" LOC = A24;
+NET "out[0]" LOC = A23;
+NET "clk" LOC = C19;
+NET "rst_n" LOC = C18;
+
+# PlanAhead Generated IO constraints 
+
+NET "out[3]" DRIVE = 2;
+NET "out[2]" DRIVE = 2;
+NET "out[1]" DRIVE = 2;
+NET "out[0]" DRIVE = 2;

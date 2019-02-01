@@ -1029,9 +1029,7 @@ def test():
 if __name__ == "__main__":
 	if len(sys.argv) == 1:
 		test()
-	elif len(sys.argv) == 3:
+	elif len(sys.argv) == 5:
 		pattern = PatternGen(sys.argv[1], sys.argv[2])
 		pattern.write()
-	elif len(sys.argv) == 4:
-		if sys.argv[3] == '-b':
-			batch_build(sys.argv[1], sys.argv[2])
+		pattern.trf2vcd(sys.argv[3], sys.argv[4], flag='bypass')

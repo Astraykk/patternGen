@@ -5,7 +5,7 @@ $timescale
 	1us
 $end
 $date
-	Wed Jan  2 14:51:45 2019
+	Thu Jan 24 14:12:44 2019
 $end
 $scope module pin_test_tb $end
 $var reg 1 ! pin_in $end
@@ -18,33 +18,33 @@ $upscope $end
 $enddefinitions $end
 #0
 $dumpvars
-1%
-0"
+1&
 0!
+1%
 0#
 0$
-1&
+0"
 $end
 #1
 0&
-0%
-1!
 1$
+1!
+0%
 #2
 1&
-1%
-0!
 0$
+0!
+1%
 #3
-1!
 1$
+1!
 #4
 0&
-0%
-0!
 0$
+0!
+0%
 #5
 1&
-1%
-1!
 1$
+1!
+1%
