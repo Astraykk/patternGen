@@ -1,26 +1,28 @@
 # -*- coding:utf-8 -*-
 """
+batch.py ver_0.0.1
+For batch operation: build, test, trf2vcd
+
 Dependencies:
 beautiful soup
 
 Path:
-
 
 Usage:
 $ python batch_operation.py
 Choose operation: build(0), test(1), trf2vcd(2)
 (If you want execute multiple operations in a row, input the corresponding digits
 like 01, 12, or 012)
+(Enter to quit)
 build
-Input project path:
-pin_test
-Input tfo file name:
+Input tfo file path:
 tfo_demo.tfo
 """
 import os
 import sys
 import bs4
 from patternGen import PatternGen
+
 
 DIRECTORY = '/home/linaro/mysite/uploads'
 app_path = '/home/linaro/BR0101/z7_v4_com/z7_v4_ip_app'
@@ -48,8 +50,8 @@ def get_soup(path, file):
 	return soup
 
 
-def get_file_list(tfo):
-	tfo_path = os.path.join(DIRECTORY, tfo)
+def get_file_list(path, tfo):
+	tfo_path = os.path.join(path, tfo)
 	i_list = []
 	o_list = []
 	# print(path)
@@ -108,11 +110,63 @@ def batch_test(i_file_list, o_file_list):
 		print(msg)
 
 
-def batch_trf2vcd():
-	pass
+def batch_trf2vcd(path, tfo):
+	print('Start batch trf2vcd')
+	file_list_list = tfo_parser(path, tfo)
+	for project_path, file_list in file_list_list.items():
+		pattern = PatternGen(os.path.join(path, project_path), file_list=file_list)
+		temp_path = os.path.join(path, project_path, 'temp.json')
+		if os.path.isfile(temp_path):
+			trf = pattern.project_name + '.trf'
+			vcd = pattern.project_name + '_trf.vcd'
+			pattern.trf2vcd(trf, vcd, flag='bypass')
+			print('Batch trf2vcd finished')
+		else:
+			print('temp.json not found. Please build ptn first.')
 
 
+def batch_merge(path, tfo):
+	from mytools import VcdFile, vcd_merge
+	print('Start batch merge')
+	file_list_list = tfo_parser(path, tfo)
+	# print(file_list_list)
+	for project_path, file_list in file_list_list.items():
+		pattern = PatternGen(os.path.join(path, project_path), file_list=file_list)
+		period = pattern.digital_param['period']
+		vcd1_path = os.path.join(project_path, pattern.file_list['VCD'])
+		vcd2_path = os.path.join(project_path, pattern.project_name + '_trf.vcd')
+		vcdm_path = os.path.join(project_path, pattern.project_name + '_merge.vcd')
+		vcd1 = VcdFile(vcd1_path, period=period)
+		vcd1.get_vcd_info()
+		vcd2 = VcdFile(vcd2_path, period=period)
+		vcd2.get_vcd_info()
+		vcdm = vcd_merge(vcd1, vcd2, vcdm_path)
+		vcdm.gen_vcd(vcdm_path)
+		print('Batch merge finished')
+
+
+string = """
+Choose operation: build(0), test(1), trf2vcd(2)
+(If you want execute multiple operations in a row, input the corresponding digits
+like 01, 12, or 012)
+(Enter to quit)
+"""
 if __name__ == "__main__":
-	if len(sys.argv) == 2:
-		i_list, o_list = get_file_list(sys.argv[1])
-		batch_test(i_list, o_list)
+	while True:
+		print(string)
+		mode = input()
+		if mode == '':
+			break
+		print('Input project path')
+		path = input()
+		print('Input tfo file name')
+		tfo = input()
+		if mode == 'build' or mode == '0':
+			batch_build(path, tfo)
+		elif mode == 'test' or mode == '1':
+			i_list, o_list = get_file_list(path, tfo)
+			batch_test(i_list, o_list)
+		elif mode == 'trf2vcd' or mode == '2':
+			batch_trf2vcd(path, tfo)
+		elif mode == 'merge' or mode == '3':
+			batch_merge(path, tfo)
